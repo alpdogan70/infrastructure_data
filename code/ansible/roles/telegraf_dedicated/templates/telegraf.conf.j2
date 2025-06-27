@@ -1,0 +1,58 @@
+# Enhanced Telegraf Configuration (existing + datacenter)
+# File: /ansible/roles/telegraf_dedicated/templates/telegraf.conf.j2
+
+[global_tags]
+  host = "$HOSTNAME"
+  environment = "iot"
+  role = "telegraf"
+
+[agent]
+  interval = "10s"
+  round_interval = true
+  metric_batch_size = 1000
+  metric_buffer_limit = 10000
+  collection_jitter = "0s"
+  flush_interval = "10s"
+  flush_jitter = "0s"
+  precision = ""
+  debug = false
+  quiet = false
+  logfile = "/var/log/telegraf/telegraf.log"
+  logfile_rotation_interval = "0d"
+  logfile_rotation_max_size = "100MB"
+  logfile_rotation_max_archives = 5
+  hostname = ""
+  omit_hostname = false
+
+# EXISTING OUTPUT - IoT sensors (keep unchanged)
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "{{ influxdb_bucket }}"
+  timeout = "5s"
+  namepass = ["iot_*", "mqtt_*", "sensors_*"]
+
+# EXISTING OUTPUT - System metrics (keep unchanged)
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "telegraf"
+  timeout = "5s"
+  namedrop = ["iot_*", "mqtt_*", "sensors_*"]
+  
+  [outputs.influxdb_v2.tagpass]
+    source = ["telegraf"]
+
+# NEW OUTPUT - Datacenter metrics (additional, non-conflicting)
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "{{ influxdb_bucket }}"
+  timeout = "5s"
+  namepass = ["datacenter_*"]
+  
+  [outputs.influxdb_v2.tagpass]
+    source = ["datacenter"]

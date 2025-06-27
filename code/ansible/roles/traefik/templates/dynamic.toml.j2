@@ -1,0 +1,42 @@
+[http]
+  [http.routers]
+    [http.routers.api]
+      rule = "PathPrefix(`/api`, `/dashboard`)"
+      entryPoints = ["api"]
+      service = "api@internal"
+      middlewares = ["auth","allow_ip"]
+  [http.middlewares]
+    [http.middlewares.auth.basicAuth]
+      users = [
+      "staner:$2y$05$DUg7Cirs4yFGb/HJedDjPuurjv1QMd3wnt4wE2dzlQshAPLQSWala"
+      ]
+      removeHeader = true
+    [http.middlewares.to_https.redirectScheme]
+      scheme = "https"
+      permanent = true
+    [http.middlewares.allow_ip.ipAllowList]
+      sourceRange = ["127.0.0.1/32", "10.0.1.0/24"]
+    [http.middlewares.secure_headers.headers]
+      framedeny = true
+      browserxssfilter = true
+      contentTypeNosniff = true
+      stsIncludeSubdomains = true
+      stsPreload = true
+      stsSeconds = 31536000
+      forceStsHeader = true
+      referrerPolicy = "same-origin"
+
+[tls]
+  [tls.options]
+    [tls.options.default]
+      minVersion = "VersionTLS13"
+      sniStrict = true
+      cipherSuites = [
+        "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+        "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+        "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+        "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+        "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305",
+        "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305"
+      ]
+      curvePreferences = ["CurveP521","CurveP384"]

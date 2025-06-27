@@ -1,0 +1,161 @@
+# Enhanced Datacenter Energy Configuration (FIXED for missing buckets)
+# File: /ansible/roles/telegraf_dedicated/templates/datacenter_energy.conf.j2
+
+# Main Dashboard Data - FOR dashboard_realtime BUCKET
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = ["energy/datacenter/dashboard"]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-datacenter-dashboard"
+  
+  data_format = "json"
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_dashboard"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "dashboard"
+    system = "energy_management"
+
+# Datacenter Solar Production
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "energy/solar/datacenter/production",
+    "energy/solar/datacenter/summary"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-datacenter-solar"
+  
+  data_format = "json"
+  tag_keys = ["panels_active", "weather_factor", "trend"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_solar"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "solar"
+
+# Datacenter Battery System
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "energy/battery/datacenter/status",
+    "energy/battery/datacenter/summary"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-datacenter-battery"
+  
+  data_format = "json"
+  tag_keys = ["health", "trend"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_battery"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "battery"
+
+# Datacenter Power Consumption - FOR energy_consumption BUCKET (FIXED TOPIC)
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "energy/consumption/datacenter/power",
+    "energy/consumption/datacenter/metrics"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-datacenter-load"
+  
+  data_format = "json"
+  tag_keys = ["active_servers", "pue", "trend"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_consumption"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "load"
+
+# Grid Connection
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = ["energy/grid/datacenter/status"]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-datacenter-grid"
+  
+  data_format = "json"
+  tag_keys = ["tariff_type", "grid_quality"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_grid"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "grid"
+
+# Energy Optimization Decisions
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = ["energy/optimization/datacenter/decision"]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-datacenter-optimizer"
+  
+  data_format = "json"
+  tag_keys = ["mode"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_optimization"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "optimizer"
+
+# Weather Data - FOR environmental_data BUCKET (FIXED TOPIC)
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "weather/datacenter/current",
+    "environment/weather/datacenter/current"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-datacenter-weather"
+  
+  data_format = "json"
+  tag_keys = ["condition"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_weather"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "weather"

@@ -1,0 +1,102 @@
+---
+# Consul service registration for BMC Simulator
+# File: /ansible/roles/consul/consul_service_bmc/tasks/main.yml
+
+- name: Register BMC Web Interface service in Consul
+  copy:
+    dest: /etc/consul.d/bmc-web.service.json
+    owner: consul
+    group: consul
+    mode: '0644'
+    content: |
+      {
+        "service": {
+          "name": "bmc-web",
+          "tags": [
+            "bmc",
+            "web-interface", 
+            "ipmi",
+            "datacenter",
+            "energy-management"
+          ],
+          "address": "{{ ansible_default_ipv4.address }}",
+          "port": 80,
+          "meta": {
+            "version": "aspeed-ast2600",
+            "environment": "dev",
+            "managed_servers": "12",
+            "energy_aware": "true"
+          },
+          "check": {
+            "http": "http://{{ ansible_default_ipv4.address }}/api/bmc/status",
+            "method": "GET",
+            "interval": "30s",
+            "timeout": "10s"
+          }
+        }
+      }
+  notify: reload consul
+
+- name: Register BMC IPMI service in Consul  
+  copy:
+    dest: /etc/consul.d/bmc-ipmi.service.json
+    owner: consul
+    group: consul
+    mode: '0644'
+    content: |
+      {
+        "service": {
+          "name": "bmc-ipmi",
+          "tags": [
+            "bmc",
+            "ipmi",
+            "remote-management",
+            "power-control"
+          ],
+          "address": "{{ ansible_default_ipv4.address }}", 
+          "port": 623,
+          "meta": {
+            "protocol": "ipmi-over-lan",
+            "version": "2.0",
+            "authentication": "md5",
+            "environment": "dev"
+          },
+          "check": {
+            "tcp": "{{ ansible_default_ipv4.address }}:623",
+            "interval": "30s",
+            "timeout": "5s"
+          }
+        }
+      }
+  notify: reload consul
+
+- name: Register BMC Core service in Consul
+  copy:
+    dest: /etc/consul.d/bmc-core.service.json
+    owner: consul
+    group: consul
+    mode: '0644'
+    content: |
+      {
+        "service": {
+          "name": "bmc-core",
+          "tags": [
+            "bmc",
+            "core-service",
+            "sensor-monitoring", 
+            "power-management"
+          ],
+          "address": "{{ ansible_default_ipv4.address }}",
+          "port": 1883,
+          "meta": {
+            "component": "aspeed-ast2600-simulator",
+            "mqtt_topics": "bmc/server/+/sensors,bmc/server/+/power,bmc/system/status",
+            "environment": "dev"
+          },
+          "check": {
+            "script": "systemctl is-active bmc-core-simulator",
+            "interval": "30s"
+          }
+        }
+      }
+  notify: reload consul

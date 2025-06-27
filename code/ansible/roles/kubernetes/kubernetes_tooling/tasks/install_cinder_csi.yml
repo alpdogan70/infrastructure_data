@@ -1,0 +1,13 @@
+- name: Add stable chart repo
+  kubernetes.core.helm_repository:
+    name: cpo
+    repo_url: "https://kubernetes.github.io/cloud-provider-openstack"
+
+- name: Deploy cinder-csi
+  kubernetes.core.helm:
+    name: cinder-csi
+    chart_ref: cpo/openstack-cinder-csi
+    chart_version: "{{ kubernetes_helm_cinder_version }}"
+    release_namespace: kube-system
+    create_namespace: true
+    values: "{{ lookup('template', 'csi-cinder-values.yml.j2') | from_yaml }}"

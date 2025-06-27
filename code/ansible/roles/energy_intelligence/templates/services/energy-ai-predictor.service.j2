@@ -1,0 +1,67 @@
+# Template Service Systemd Energy AI Predictor
+# File: ansible/roles/energy_intelligence/templates/services/energy-ai-predictor.service.j2
+
+[Unit]
+Description={{ energy_ai_services[0].description }}
+Documentation=https://docs.energy-ai.local/predictor
+After=network.target influxdb.service mosquitto.service
+Wants=network-online.target
+Requires=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory={{ energy_ai_paths.base }}
+Environment="PYTHONUNBUFFERED=1"
+Environment="ENERGY_AI_ENV={{ energy_ai.environment }}"
+Environment="ENERGY_AI_VERSION={{ energy_ai.version }}"
+Environment="MQTT_BROKER={{ mqtt_broker_host }}"
+Environment="INFLUXDB_HOST={{ influxdb_host }}"
+Environment="INFLUXDB_ORG={{ influxdb_org }}"
+Environment="WEATHER_API_KEY={{ external_apis.weather.api_key }}"
+
+# Commande principale
+ExecStart={{ python_ai.venv_path }}/bin/python {{ energy_ai_paths.base }}/energy_predictor.py
+
+# Redémarrage automatique
+Restart={{ energy_ai_services[0].restart_policy }}
+RestartSec=15
+StartLimitInterval=300
+StartLimitBurst=5
+
+# Santé du service
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ energy_ai_paths.base }} {{ energy_ai_paths.logs }} {{ energy_ai_paths.models }} {{ energy_ai_paths.data }}
+
+# Limites de ressources
+MemoryMax=2G
+CPUQuota=50%
+TasksMax=100
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=energy-ai-predictor
+
+# Timeouts
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+# Sanity checks
+ExecStartPre=/bin/bash -c 'test -f {{ energy_ai_paths.base }}/energy_predictor.py'
+ExecStartPre=/bin/bash -c 'test -d {{ energy_ai_paths.logs }}'
+ExecStartPre={{ python_ai.venv_path }}/bin/python -c "import sys; sys.path.append('{{ energy_ai_paths.base }}'); import energy_predictor; print('✅ Import test passed')"
+
+# Actions post-démarrage
+ExecStartPost=/bin/bash -c 'echo "🧠 Energy AI Predictor started at $(date)" >> {{ energy_ai_paths.logs }}/service.log'
+
+# Actions avant arrêt
+ExecStopPost=/bin/bash -c 'echo "🛑 Energy AI Predictor stopped at $(date)" >> {{ energy_ai_paths.logs }}/service.log'
+
+[Install]
+WantedBy=multi-user.target
+Alias=ai-predictor.service

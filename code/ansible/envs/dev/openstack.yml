@@ -1,0 +1,7 @@
+plugin: openstack.cloud.openstack
+cache: yes
+all_projects: false
+expand_hostvars: true
+fail_on_errors: true
+strict: true
+private: true

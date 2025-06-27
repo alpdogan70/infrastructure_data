@@ -1,0 +1,231 @@
+# MQTT Consumer Input Plugin for IoT Sensors
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "sensors/+/+",
+    "devices/+/status",
+    "devices/+/metrics",
+    "devices/+/error"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-iot-consumer"
+  data_format = "json"
+  tag_keys = ["device_id", "location", "sensor_type", "status"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "iot_sensors"
+  [inputs.mqtt_consumer.tags]
+    source = "mqtt"
+    collector = "telegraf"
+    system = "iot"
+
+# Genesis Solar Panel Metrics
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "genesis/solar/+/power_now",
+    "genesis/solar/+/voltage",
+    "genesis/solar/+/efficiency",
+    "genesis/solar/+/irradiance"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-solar-consumer"
+  data_format = "json"
+  tag_keys = ["panel_id"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "genesis_solar"
+  [[inputs.mqtt_consumer.topic_parsing]]
+    topic = "genesis/solar/+/+"
+    measurement = "_/_/_/measurement"
+    tags = "_/_/panel_id/_"
+  [inputs.mqtt_consumer.tags]
+    source = "mqtt"
+    collector = "telegraf"
+    system = "genesis"
+    component = "solar"
+
+# Additional Solar Metrics
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "genesis/solar/+/temperature",
+    "genesis/solar/+/current",
+    "genesis/solar/+/shadow_factor"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-solar-extra"
+  data_format = "json"
+  tag_keys = ["panel_id"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "genesis_solar_extra"
+  [[inputs.mqtt_consumer.topic_parsing]]
+    topic = "genesis/solar/+/+"
+    measurement = "_/_/_/measurement"
+    tags = "_/_/panel_id/_"
+  [inputs.mqtt_consumer.tags]
+    source = "mqtt"
+    collector = "telegraf"
+    system = "genesis"
+    component = "solar"
+
+# Genesis Battery Metrics
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "genesis/battery/+/soc",
+    "genesis/battery/+/power",
+    "genesis/battery/+/voltage",
+    "genesis/battery/+/temperature",
+    "genesis/battery/+/cycles"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-battery-consumer"
+  data_format = "json"
+  tag_keys = ["battery_id"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "genesis_battery"
+  [[inputs.mqtt_consumer.topic_parsing]]
+    topic = "genesis/battery/+/+"
+    measurement = "_/_/_/measurement"
+    tags = "_/_/battery_id/_"
+  [inputs.mqtt_consumer.tags]
+    source = "mqtt"
+    collector = "telegraf"
+    system = "genesis"
+    component = "battery"
+
+# Additional Battery Metrics
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "genesis/battery/+/internal_resistance",
+    "genesis/battery/+/health_score"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-battery-extra"
+  data_format = "json"
+  tag_keys = ["battery_id"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "genesis_battery_extra"
+  [[inputs.mqtt_consumer.topic_parsing]]
+    topic = "genesis/battery/+/+"
+    measurement = "_/_/_/measurement"
+    tags = "_/_/battery_id/_"
+  [inputs.mqtt_consumer.tags]
+    source = "mqtt"
+    collector = "telegraf"
+    system = "genesis"
+    component = "battery"
+
+# Genesis Server Metrics
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "genesis/server/+/power",
+    "genesis/server/+/load",
+    "genesis/server/+/temperature",
+    "genesis/server/+/memory_usage",
+    "genesis/server/+/network_io"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-server-consumer"
+  data_format = "json"
+  tag_keys = ["server_id"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "genesis_server"
+  [[inputs.mqtt_consumer.topic_parsing]]
+    topic = "genesis/server/+/+"
+    measurement = "_/_/_/measurement"
+    tags = "_/_/server_id/_"
+  [inputs.mqtt_consumer.tags]
+    source = "mqtt"
+    collector = "telegraf"
+    system = "genesis"
+    component = "server"
+
+# Genesis System Status and Overview
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "genesis/+/+/status",
+    "genesis/+/+/config",
+    "genesis/+/+/error",
+    "genesis/system/overview"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-genesis-system"
+  data_format = "json"
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "genesis_system"
+  [inputs.mqtt_consumer.tags]
+    source = "mqtt"
+    collector = "telegraf"
+    system = "genesis"
+    component = "system"
+
+
+# # MQTT Consumer Input Plugin
+# [[inputs.mqtt_consumer]]
+#   servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+#   topics = [
+#     "sensors/+/+",
+#     "devices/+/status",
+#     "devices/+/metrics",
+#     "devices/+/error"
+#   ]
+#   topic_tag = "topic"
+#   qos = 1
+#   connection_timeout = "30s"
+#   username = "telegraf"
+#   password = "telegraf123"
+#   client_id = "telegraf-consumer"
+  
+#   # Parse JSON data
+#   data_format = "json"
+#   tag_keys = ["device_id", "location", "sensor_type", "status"]
+  
+#   # Handle timestamps from IoT devices
+#   json_time_key = "timestamp"
+#   json_time_format = "2006-01-02T15:04:05Z07:00"
+  
+#   # Name the measurement
+#   name_override = "iot_sensors"
+  
+#   # Add custom tags
+#   [inputs.mqtt_consumer.tags]
+#     source = "mqtt"
+#     collector = "telegraf"

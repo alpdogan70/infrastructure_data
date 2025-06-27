@@ -1,0 +1,8 @@
+replicaCount: 1
+consulServer: {{ kubernetes_helm_consul_exporter_server }}
+serviceMonitor:
+  enabled: true
+  interval: 10s
+  telemetryPath: /metrics
+  labels:
+    release: kube-prometheus-stack

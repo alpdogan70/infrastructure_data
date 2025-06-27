@@ -1,0 +1,397 @@
+
+- name: prerequisites
+  apt:
+    name: python3-yaml, python3-kubernetes
+    state: present
+
+- name: Install helm if not exists
+  unarchive:
+    src: "https://get.helm.sh/helm-v{{ kubernetes_tooling_helm_version }}-linux-amd64.tar.gz"
+    dest: /usr/local/bin
+    extra_opts: "--strip-components=1"
+    owner: root
+    group: root
+    mode: 0755
+    remote_src: true
+  args:
+    creates: /usr/local/bin/helm
+
+- name: Add stable chart repo
+  kubernetes.core.helm_repository:
+    name: hashicorp
+    repo_url: "https://helm.releases.hashicorp.com"
+
+- name: Deploy consul sync
+  kubernetes.core.helm:
+    name: consul
+    chart_ref: hashicorp/consul
+    chart_version: "{{ kubernetes_helm_consulsync_version }}"
+    release_namespace: sre
+    create_namespace: true
+    values: "{{ lookup('template', 'consulsync-values.yml.j2') | from_yaml }}"
+
+- name: install cinder-csi
+  include_tasks: install_cinder_csi.yml
+
+- name: install prometheus-stack
+  include_tasks: install_prometheus_stack.yml
+
+- name: install victoriametrics cluster
+  include_tasks: install_vmstack.yml
+
+- name: install consul exporter
+  include_tasks: install_consul_exporter.yml
+
+- name: configure influxdb integration
+  include_tasks: configure_influxdb_datasource.yml
+
+
+# Remplacement dans kubernetes/kubernetes_tooling/tasks/main.yml
+# Remplacez la section InfluxDB par cette version automatisée :
+
+# # ===== INTÉGRATION INFLUXDB AUTOMATISÉE =====
+# - name: Configure InfluxDB datasource for IoT monitoring (AUTOMATED IP)
+#   block:
+#     - name: Auto-detect InfluxDB IP from inventory
+#       set_fact:
+#         influxdb_host_ip: "{{ hostvars[groups['meta-app_influxdb'][0]]['ansible_default_ipv4']['address'] }}"
+#         influxdb_port: 8086
+#       when: groups['meta-app_influxdb'] is defined and groups['meta-app_influxdb'] | length > 0
+
+#     - name: Fallback - Try to discover InfluxDB via Consul
+#       uri:
+#         url: "http://consul.service.consul:8500/v1/catalog/service/influxdb"
+#         method: GET
+#       register: consul_influxdb_discovery
+#       failed_when: false
+#       when: influxdb_host_ip is not defined
+
+#     - name: Set InfluxDB IP from Consul discovery
+#       set_fact:
+#         influxdb_host_ip: "{{ consul_influxdb_discovery.json[0].ServiceAddress }}"
+#         influxdb_port: "{{ consul_influxdb_discovery.json[0].ServicePort }}"
+#       when: 
+#         - consul_influxdb_discovery is defined
+#         - consul_influxdb_discovery.json is defined
+#         - consul_influxdb_discovery.json | length > 0
+#         - influxdb_host_ip is not defined
+
+#     - name: Display detected InfluxDB configuration
+#       debug:
+#         msg: |
+#           🔍 InfluxDB Auto-Detection Results:
+#           - Detected IP: {{ influxdb_host_ip | default('NOT FOUND') }}
+#           - Port: {{ influxdb_port | default('8086') }}
+#           - Detection method: {% if groups['meta-app_influxdb'] is defined %}Inventory{% else %}Consul{% endif %}
+#           - InfluxDB Group: {{ groups['meta-app_influxdb'] | default('Not defined') }}
+
+#     - name: Get InfluxDB token from remote server
+#       slurp:
+#         src: /etc/influxdb2/admin-token
+#       register: influxdb_token_content
+#       delegate_to: "{{ groups['meta-app_influxdb'][0] }}"
+#       become: yes
+#       when: 
+#         - influxdb_host_ip is defined
+#         - groups['meta-app_influxdb'] is defined
+
+#     - name: Set InfluxDB configuration variables
+#       set_fact:
+#         influxdb_token: "{{ influxdb_token_content.content | b64decode | trim }}"
+#         influxdb_org: "iot"
+#         influxdb_bucket: "sensors"
+#       when: influxdb_token_content is defined
+
+#     - name: Test InfluxDB connectivity with auto-detected IP
+#       uri:
+#         url: "http://{{ influxdb_host_ip }}:{{ influxdb_port }}/health"
+#         method: GET
+#         timeout: 30
+#       register: influxdb_health_test
+#       failed_when: false
+#       when: influxdb_host_ip is defined
+
+#     - name: Display connectivity test results
+#       debug:
+#         msg: |
+#           📊 InfluxDB Connectivity Test:
+#           - Target: http://{{ influxdb_host_ip }}:{{ influxdb_port }}/health
+#           - Status: {{ 'Connected ✅' if influxdb_health_test.status == 200 else 'Failed ❌' }}
+#           {% if influxdb_health_test.status == 200 %}
+#           - Response: {{ influxdb_health_test.json.message }}
+#           - Version: {{ influxdb_health_test.json.version | default('Unknown') }}
+#           {% else %}
+#           - Error: {{ influxdb_health_test.msg | default('Connection timeout or network error') }}
+#           - Status Code: {{ influxdb_health_test.status | default('No response') }}
+#           {% endif %}
+#           - Token: {{ influxdb_token[:20] if influxdb_token is defined else 'Not retrieved' }}...
+
+#     - name: Create InfluxDB datasources in Grafana (Dynamic IP)
+#       kubernetes.core.k8s:
+#         state: present
+#         definition:
+#           apiVersion: v1
+#           kind: ConfigMap
+#           metadata:
+#             name: grafana-datasource-influxdb
+#             namespace: monitoring
+#             labels:
+#               apps: prometheus-operator-grafana
+#               grafana_datasource: "1"
+#           data:
+#             influxdb-datasource.yml: |
+#               apiVersion: 1
+#               datasources:
+#                 - name: InfluxDB_IoT
+#                   type: influxdb
+#                   access: proxy
+#                   url: http://{{ influxdb_host_ip }}:{{ influxdb_port }}
+#                   database: "{{ influxdb_org }}"
+#                   user: "admin"
+#                   secureJsonData:
+#                     token: "{{ influxdb_token }}"
+#                   jsonData:
+#                     version: Flux
+#                     organization: "{{ influxdb_org }}"
+#                     defaultBucket: "{{ influxdb_bucket }}"
+#                     tlsSkipVerify: true
+#                     httpMode: POST
+#                   isDefault: false
+#                   editable: true
+                
+#                 - name: InfluxDB_Solar
+#                   type: influxdb
+#                   access: proxy
+#                   url: http://{{ influxdb_host_ip }}:{{ influxdb_port }}
+#                   database: "{{ influxdb_org }}"
+#                   user: "admin"
+#                   secureJsonData:
+#                     token: "{{ influxdb_token }}"
+#                   jsonData:
+#                     version: Flux
+#                     organization: "{{ influxdb_org }}"
+#                     defaultBucket: "solar_panels"
+#                     tlsSkipVerify: true
+#                     httpMode: POST
+#                   isDefault: false
+#                   editable: true
+
+#                 - name: InfluxDB_Battery
+#                   type: influxdb
+#                   access: proxy
+#                   url: http://{{ influxdb_host_ip }}:{{ influxdb_port }}
+#                   database: "{{ influxdb_org }}"
+#                   user: "admin"
+#                   secureJsonData:
+#                     token: "{{ influxdb_token }}"
+#                   jsonData:
+#                     version: Flux
+#                     organization: "{{ influxdb_org }}"
+#                     defaultBucket: "batteries"
+#                     tlsSkipVerify: true
+#                     httpMode: POST
+#                   isDefault: false
+#                   editable: true
+
+#                 - name: InfluxDB_Energy
+#                   type: influxdb
+#                   access: proxy
+#                   url: http://{{ influxdb_host_ip }}:{{ influxdb_port }}
+#                   database: "{{ influxdb_org }}"
+#                   user: "admin"
+#                   secureJsonData:
+#                     token: "{{ influxdb_token }}"
+#                   jsonData:
+#                     version: Flux
+#                     organization: "{{ influxdb_org }}"
+#                     defaultBucket: "energy_consumption"
+#                     tlsSkipVerify: true
+#                     httpMode: POST
+#                   isDefault: false
+#                   editable: true
+#       when: 
+#         - influxdb_health_test is defined
+#         - influxdb_health_test.status == 200
+
+#     - name: Create basic IoT dashboard with dynamic IP
+#       kubernetes.core.k8s:
+#         state: present
+#         definition:
+#           apiVersion: v1
+#           kind: ConfigMap
+#           metadata:
+#             name: grafana-dashboard-iot-basic
+#             namespace: monitoring
+#             labels:
+#               apps: prometheus-operator-grafana
+#               grafana_dashboard: "1"
+#           data:
+#             iot-basic.json: |
+#               {
+#                 "annotations": {"list": []},
+#                 "description": "IoT Monitoring Dashboard - Auto-configured for {{ influxdb_host_ip }}:{{ influxdb_port }}",
+#                 "editable": true,
+#                 "fiscalYearStartMonth": 0,
+#                 "graphTooltip": 0,
+#                 "id": null,
+#                 "links": [],
+#                 "panels": [
+#                   {
+#                     "collapsed": false,
+#                     "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+#                     "id": 1,
+#                     "panels": [],
+#                     "title": "IoT System Overview - Connected to {{ influxdb_host_ip }}",
+#                     "type": "row"
+#                   },
+#                   {
+#                     "datasource": {"type": "influxdb", "uid": "InfluxDB_IoT"},
+#                     "fieldConfig": {
+#                       "defaults": {
+#                         "color": {"mode": "thresholds"},
+#                         "mappings": [],
+#                         "thresholds": {
+#                           "mode": "absolute",
+#                           "steps": [
+#                             {"color": "red", "value": null},
+#                             {"color": "yellow", "value": 1},
+#                             {"color": "green", "value": 5}
+#                           ]
+#                         },
+#                         "unit": "short"
+#                       }
+#                     },
+#                     "gridPos": {"h": 6, "w": 6, "x": 0, "y": 1},
+#                     "id": 2,
+#                     "options": {
+#                       "colorMode": "value",
+#                       "graphMode": "area",
+#                       "justifyMode": "center",
+#                       "orientation": "auto",
+#                       "reduceOptions": {
+#                         "calcs": ["lastNotNull"],
+#                         "fields": "",
+#                         "values": false
+#                       },
+#                       "textMode": "auto"
+#                     },
+#                     "targets": [
+#                       {
+#                         "datasource": {"type": "influxdb", "uid": "InfluxDB_IoT"},
+#                         "query": "from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"iot_sensors\")\n  |> group(columns: [\"device_id\"])\n  |> count()\n  |> sum()",
+#                         "refId": "A"
+#                       }
+#                     ],
+#                     "title": "Active IoT Devices",
+#                     "type": "stat"
+#                   },
+#                   {
+#                     "datasource": {"type": "influxdb", "uid": "InfluxDB_IoT"},
+#                     "fieldConfig": {
+#                       "defaults": {
+#                         "color": {"mode": "palette-classic"},
+#                         "custom": {
+#                           "axisBorderShow": false,
+#                           "axisCenteredZero": false,
+#                           "axisColorMode": "text",
+#                           "axisLabel": "",
+#                           "axisPlacement": "auto",
+#                           "barAlignment": 0,
+#                           "drawStyle": "line",
+#                           "fillOpacity": 10,
+#                           "gradientMode": "none",
+#                           "hideFrom": {"legend": false, "tooltip": false, "viz": false},
+#                           "insertNulls": false,
+#                           "lineInterpolation": "linear",
+#                           "lineWidth": 1,
+#                           "pointSize": 5,
+#                           "scaleDistribution": {"type": "linear"},
+#                           "showPoints": "never",
+#                           "spanNulls": false,
+#                           "stacking": {"group": "A", "mode": "none"},
+#                           "thresholdsStyle": {"mode": "off"}
+#                         },
+#                         "mappings": [],
+#                         "thresholds": {
+#                           "mode": "absolute",
+#                           "steps": [
+#                             {"color": "green", "value": null},
+#                             {"color": "red", "value": 80}
+#                           ]
+#                         },
+#                         "unit": "celsius"
+#                       }
+#                     },
+#                     "gridPos": {"h": 8, "w": 18, "x": 6, "y": 1},
+#                     "id": 3,
+#                     "options": {
+#                       "legend": {
+#                         "calcs": ["mean", "lastNotNull"],
+#                         "displayMode": "table",
+#                         "placement": "bottom",
+#                         "showLegend": true
+#                       },
+#                       "tooltip": {"mode": "multi", "sort": "none"}
+#                     },
+#                     "targets": [
+#                       {
+#                         "datasource": {"type": "influxdb", "uid": "InfluxDB_IoT"},
+#                         "query": "from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"iot_sensors\")\n  |> filter(fn: (r) => r.sensor_type == \"temperature\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)",
+#                         "refId": "A"
+#                       }
+#                     ],
+#                     "title": "IoT Temperature Sensors",
+#                     "type": "timeseries"
+#                   }
+#                 ],
+#                 "refresh": "30s",
+#                 "schemaVersion": 39,
+#                 "tags": ["iot", "influxdb", "auto-config"],
+#                 "time": {"from": "now-1h", "to": "now"},
+#                 "timepicker": {},
+#                 "timezone": "",
+#                 "title": "IoT Monitoring - Auto Config",
+#                 "uid": "iot-auto",
+#                 "version": 1,
+#                 "weekStart": ""
+#               }
+#       when: 
+#         - influxdb_health_test is defined
+#         - influxdb_health_test.status == 200
+
+#     - name: Display final integration status
+#       debug:
+#         msg: |
+#           {% if influxdb_health_test.status == 200 %}
+#           ✅ InfluxDB Integration Completed Successfully!
+          
+#           📊 Auto-Configured Datasources:
+#           - InfluxDB_IoT: {{ influxdb_host_ip }}:{{ influxdb_port }} (bucket: sensors)
+#           - InfluxDB_Solar: {{ influxdb_host_ip }}:{{ influxdb_port }} (bucket: solar_panels)
+#           - InfluxDB_Battery: {{ influxdb_host_ip }}:{{ influxdb_port }} (bucket: batteries)
+#           - InfluxDB_Energy: {{ influxdb_host_ip }}:{{ influxdb_port }} (bucket: energy_consumption)
+          
+#           📋 Dashboard Available:
+#           - IoT Auto Config: http://gx.tanerinfo.eu/d/iot-auto
+          
+#           🔗 Grafana Access:
+#           - Main URL: http://gx.tanerinfo.eu
+#           - All datasources auto-configured with detected IP: {{ influxdb_host_ip }}
+          
+#           🚀 Your IoT monitoring is ready with automatic IP detection!
+#           {% else %}
+#           ❌ InfluxDB Integration Failed
+          
+#           🔍 Auto-Detection Results:
+#           - Detected IP: {{ influxdb_host_ip | default('FAILED TO DETECT') }}
+#           - Connection Status: {{ influxdb_health_test.status | default('No response') }}
+#           - Error: {{ influxdb_health_test.msg | default('Unknown error') }}
+          
+#           💡 Troubleshooting:
+#           1. Verify InfluxDB service is running
+#           2. Check network connectivity between Kubernetes and InfluxDB
+#           3. Verify inventory configuration for meta-app_influxdb group
+#           {% endif %}
+
+#   when: groups['meta-app_influxdb'] is defined and groups['meta-app_influxdb'] | length > 0
+#   tags: [influxdb, grafana, iot, auto-config]

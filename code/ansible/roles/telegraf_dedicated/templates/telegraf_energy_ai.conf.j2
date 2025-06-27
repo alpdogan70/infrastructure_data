@@ -1,0 +1,177 @@
+# Configuration Telegraf pour Energy AI
+# File: ansible/roles/telegraf_dedicated/templates/telegraf_energy_ai.conf.j2
+# À ajouter dans votre configuration Telegraf existante
+
+# ================== ENERGY AI MQTT INPUTS ==================
+
+# AI Predictions Input
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "{{ energy_ai_mqtt.topics.predictions }}/+",
+    "{{ energy_ai_mqtt.topics.performance }}"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "{{ energy_ai_mqtt.username }}"
+  password = "{{ energy_ai_mqtt.password }}"
+  client_id = "telegraf-energy-ai-predictions"
+  
+  data_format = "json"
+  tag_keys = ["ai_model", "prediction_type", "confidence_level", "horizon"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "energy_ai_predictions"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "energy_ai"
+    component = "predictions"
+    version = "{{ energy_ai.version }}"
+
+# Energy Scenarios Input
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "{{ energy_ai_mqtt.topics.scenarios }}/executed",
+    "{{ energy_ai_mqtt.topics.scenarios }}/status",
+    "{{ energy_ai_mqtt.topics.scenarios }}/actions/+"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "{{ energy_ai_mqtt.username }}"
+  password = "{{ energy_ai_mqtt.password }}"
+  client_id = "telegraf-energy-scenarios"
+  
+  data_format = "json"
+  tag_keys = ["scenario_name", "action_type", "priority", "trigger_reason"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "energy_scenarios_data"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "energy_scenarios"
+    component = "automation"
+    version = "{{ energy_ai.version }}"
+
+# AI Recommendations Input
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "{{ energy_ai_mqtt.topics.recommendations }}"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "{{ energy_ai_mqtt.username }}"
+  password = "{{ energy_ai_mqtt.password }}"
+  client_id = "telegraf-energy-recommendations"
+  
+  data_format = "json"
+  tag_keys = ["recommendation_type", "priority", "category"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "energy_ai_recommendations"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "energy_ai"
+    component = "recommendations"
+    version = "{{ energy_ai.version }}"
+
+# Weather ML Input
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "{{ energy_ai_mqtt.topics.weather_ml }}/forecast",
+    "{{ energy_ai_mqtt.topics.weather_ml }}/accuracy"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "{{ energy_ai_mqtt.username }}"
+  password = "{{ energy_ai_mqtt.password }}"
+  client_id = "telegraf-weather-ml"
+  
+  data_format = "json"
+  tag_keys = ["forecast_type", "model_version", "accuracy_level"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "weather_ml_data"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "weather_ml"
+    component = "forecasting"
+    version = "{{ energy_ai.version }}"
+
+# Cost Optimization Input
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "{{ energy_ai_mqtt.topics.cost_optimization }}/results",
+    "{{ energy_ai_mqtt.topics.cost_optimization }}/arbitrage"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "{{ energy_ai_mqtt.username }}"
+  password = "{{ energy_ai_mqtt.password }}"
+  client_id = "telegraf-cost-optimization"
+  
+  data_format = "json"
+  tag_keys = ["optimization_type", "strategy", "profitability"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "cost_optimization_data"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "cost_optimizer"
+    component = "optimization"
+    version = "{{ energy_ai.version }}"
+
+# ================== ENERGY AI OUTPUTS ==================
+
+# Output to Energy AI main bucket
+[[outputs.influxdb_v2]]
+  urls = ["{{ influxdb_url }}"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ energy_ai_influxdb.org | default(influxdb_org) }}"
+  bucket = "energy_ai"
+  timeout = "5s"
+  namepass = ["energy_ai_predictions", "energy_ai_recommendations"]
+
+# Output to Scenarios bucket
+[[outputs.influxdb_v2]]
+  urls = ["{{ influxdb_url }}"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ energy_ai_influxdb.org | default(influxdb_org) }}"
+  bucket = "energy_scenarios"
+  timeout = "5s"
+  namepass = ["energy_scenarios_data"]
+
+# Output to AI Predictions bucket (short retention)
+[[outputs.influxdb_v2]]
+  urls = ["{{ influxdb_url }}"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ energy_ai_influxdb.org | default(influxdb_org) }}"
+  bucket = "ai_predictions"
+  timeout = "5s"
+  namepass = ["energy_ai_predictions"]
+
+# Output to Weather ML bucket
+[[outputs.influxdb_v2]]
+  urls = ["{{ influxdb_url }}"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ energy_ai_influxdb.org | default(influxdb_org) }}"
+  bucket = "weather_ml"
+  timeout = "5s"
+  namepass = ["weather_ml_data"]
+
+# Output to Cost Optimization bucket
+[[outputs.influxdb_v2]]
+  urls = ["{{ influxdb_url }}"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ energy_ai_influxdb.org | default(influxdb_org) }}"
+  bucket = "cost_optimization"
+  timeout = "5s"
+  namepass = ["cost_optimization_data"]

@@ -1,0 +1,6 @@
+---
+# handlers file for roles/monitoring/postgresql_exporter
+- name: restart_postgresql_exporter
+  service:
+    name: postgresql_exporter
+    state: restarted

@@ -1,0 +1,19 @@
+[Unit]
+Description=Description=VictoriaMetrics service Version {{ vmetrics_version }}
+After=network.target
+
+[Service]
+Type=simple
+LimitNOFILE=2097152
+ExecStart=/usr/local/bin/victoria-metrics-prod \
+       -storageDataPath={{ vmetrics_dir_data }} \
+       -httpListenAddr={{ vmetrics_listen }} \
+       -selfScrapeInterval=10s \
+       -retentionPeriod={{ vmetrics_month_retention }}
+# {{ vmetrics_month_retention }} months
+
+SyslogIdentifier=vmetrics
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

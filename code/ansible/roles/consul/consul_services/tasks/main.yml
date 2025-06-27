@@ -1,0 +1,31 @@
+---
+# tasks file for roles/consul_services
+
+- name: check if consul exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/consul
+  register: __consul_installed
+
+- name: check prerequites
+  ansible.builtin.assert:
+    that:
+      - __consul_installed.stat.exists == true
+    fail_msg: "Failed : you need to install consul before. Add the role please."
+
+- name: render services
+  ansible.builtin.template:
+    src: service_consul.json.j2
+    dest: "/etc/consul.d/{{ item.name }}.json"
+    mode: 0750
+    owner: consul
+    group: consul
+  with_items: "{{ consul_services }}"
+  notify: reload_consul
+  when : consul_services
+
+- name: remove a service
+  ansible.builtin.file:
+    path: "/etc/consul.d/{{ item }}.json"
+    state: absent
+  with_items: "{{ consul_service_remove }}"
+  when: consul_service_remove is defined

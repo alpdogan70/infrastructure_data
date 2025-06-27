@@ -1,0 +1,9 @@
+---
+# handlers file for roles/karma
+
+- name: restart_karma
+  systemd:
+    name: karma
+    state: restarted
+    enabled: yes
+    daemon_reload: yes

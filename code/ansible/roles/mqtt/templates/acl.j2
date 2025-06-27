@@ -1,0 +1,87 @@
+# Enhanced ACL for Energy Dashboard MQTT
+# File: /ansible/roles/mqtt/templates/acl.j2
+
+# IoT devices - write sensor data and energy metrics
+user iot
+topic readwrite sensors/#
+topic readwrite devices/#
+topic readwrite energy/#
+topic readwrite weather/#
+topic readwrite test/#
+topic readwrite system/datacenter/#
+
+# Telegraf - read all data for InfluxDB storage
+user telegraf
+topic read sensors/#
+topic read devices/#
+topic read energy/#
+topic read weather/#
+topic read system/#
+
+# Admin - full access for maintenance
+user admin
+topic readwrite #
+
+# Energy monitoring system - specialized access
+user energy_monitor
+topic readwrite energy/#
+topic readwrite weather/#
+topic read sensors/+/temperature
+topic read sensors/+/humidity
+topic read system/datacenter/#
+
+# Dashboard user - optimized read access for web interface
+user dashboard
+topic read energy/datacenter/dashboard
+topic read energy/datacenter/summary
+topic read energy/datacenter/status
+topic read energy/solar/datacenter/+
+topic read energy/battery/datacenter/+
+topic read energy/consumption/datacenter/+
+topic read energy/grid/datacenter/+
+topic read weather/datacenter/+
+topic read system/datacenter/+
+topic readwrite dashboard/heartbeat
+topic read alerts/energy/#
+
+# Pattern-based permissions for scalability
+pattern read energy/%u/#
+pattern readwrite dashboard/%c/status
+
+
+# # ACL for MQTT users
+
+# # IoT user - sensors + energy devices
+# user iot
+# topic readwrite sensors/#
+# topic readwrite devices/#
+# topic readwrite test/#
+# # Energy topics
+# topic readwrite energy/#
+# topic readwrite weather/#
+
+# # Telegraf user - read all data
+# user telegraf
+# topic read sensors/#
+# topic read devices/#
+# topic read energy/#
+# topic read weather/#
+
+# # Admin user - full access
+# user admin
+# topic readwrite #
+
+
+
+# # # ACL for MQTT users
+# # user iot
+# # topic readwrite sensors/#
+# # topic readwrite devices/#
+# # topic readwrite test/#
+
+# # user telegraf
+# # topic read sensors/#
+# # topic read devices/#
+
+# # user admin
+# # topic readwrite #

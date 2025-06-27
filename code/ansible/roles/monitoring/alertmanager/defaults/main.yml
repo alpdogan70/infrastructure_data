@@ -1,0 +1,8 @@
+---
+# defaults file for roles/alertmanager
+
+alertmanager_version: 0.26.0
+alertmanager_dir_config: /etc/alertmanager
+alertmanager_dir_data: /var/lib/alertmanager
+alertmanager_user: alertmanager
+

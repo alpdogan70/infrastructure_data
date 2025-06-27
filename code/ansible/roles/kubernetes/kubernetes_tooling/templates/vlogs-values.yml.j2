@@ -1,0 +1,15 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VLogs
+metadata:
+  name: vlogs
+  namespace: monitoring
+spec:
+  retentionPeriod: "{{ kubernetes_helm_vmcluster_vlogs_retention }}"
+  replicaCount: 1
+  storage:
+    storageClassName: "{{ kubernetes_helm_vmcluster_vlogs_storageclass }}"
+    accessModes:
+      - "ReadWriteOnce"
+    resources:
+      requests:
+        storage: "{{ kubernetes_helm_vmcluster_vlogs_size }}"

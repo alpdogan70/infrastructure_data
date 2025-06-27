@@ -1,0 +1,26 @@
+---
+# tasks file for roles/logrotate
+
+- name: Install logrotate
+  apt:
+    name: logrotate
+    state: present
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Configure logrotate
+  template:
+    src: logrotate.conf.j2
+    dest: /etc/logrotate.conf
+    mode: 0640
+
+- name: Generate logrotate conf files
+  template:
+    src: logrotate.d.conf.j2
+    dest: "/etc/logrotate.d/{{ item.name }}"
+    mode: "0644"
+  loop: "{{ logrotate_log_files }}"
+  when:
+    - logrotate_log_files is defined
+  loop_control:
+    label: "{{ item.name }}"

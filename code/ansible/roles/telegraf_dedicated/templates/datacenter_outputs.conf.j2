@@ -1,0 +1,137 @@
+# Fixed Datacenter Outputs (mapping correct measurements to buckets)
+# File: /ansible/roles/telegraf_dedicated/templates/datacenter_outputs.conf.j2
+
+# Dashboard Data - Real-time metrics
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "dashboard_realtime"
+  timeout = "5s"
+  namepass = ["datacenter_dashboard"]
+
+# Solar Production Data
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "solar_production"
+  timeout = "5s"
+  namepass = ["datacenter_solar"]
+
+# Battery System Data
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "battery_system"
+  timeout = "5s"
+  namepass = ["datacenter_battery"]
+
+# Energy Consumption Data (FIXED)
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "energy_consumption"
+  timeout = "5s"
+  namepass = ["datacenter_consumption"]
+
+# Grid Data
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "grid_data"
+  timeout = "5s"
+  namepass = ["datacenter_grid"]
+
+# Environmental Data (FIXED - includes weather)
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "environmental_data"
+  timeout = "5s"
+  namepass = ["datacenter_weather"]
+
+# Energy Management (optimization + analytics)
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "energy_management"
+  timeout = "5s"
+  namepass = ["datacenter_optimization"]
+
+
+# Fixed Datacenter Outputs (mapping correct measurements to buckets) + BMC
+# File: /ansible/roles/telegraf_dedicated/templates/datacenter_outputs.conf.j2
+# EXISTANT - GARDER TEL QUEL
+# ... (tout le contenu existant) ...
+
+# Configuration Outputs BMC corrigée
+# Ajouter/remplacer dans datacenter_outputs.conf.j2
+
+# ========== BMC DATA OUTPUTS (CORRIGÉ) ==========
+
+# BMC Server Monitoring Data (sensors + computed metrics)
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "bmc_servers"
+  timeout = "5s"
+  namepass = ["bmc_servers"]
+
+# BMC Power Management Data (power states + boot states)
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "bmc_power_management"
+  timeout = "5s"
+  namepass = ["bmc_power"]
+
+# BMC System Status & Health (system info + health checks)
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "bmc_system"
+  timeout = "5s"
+  namepass = ["bmc_api_status", "bmc_ipmi_health", "bmc_energy_management"]
+
+# ========== FIN BMC OUTPUTS ==========
+
+
+# # ========== NOUVEAU: BMC DATA OUTPUTS ==========
+
+# # BMC Server Monitoring Data
+# [[outputs.influxdb_v2]]
+#   urls = ["http://{{ influxdb_host }}:8086"]
+#   token = "{{ influxdb_token.content | b64decode | trim }}"
+#   organization = "{{ influxdb_org }}"
+#   bucket = "bmc_servers"
+#   timeout = "5s"
+#   namepass = ["bmc_servers", "bmc_api_servers"]
+
+# # BMC Power Management Data
+# [[outputs.influxdb_v2]]
+#   urls = ["http://{{ influxdb_host }}:8086"]
+#   token = "{{ influxdb_token.content | b64decode | trim }}"
+#   organization = "{{ influxdb_org }}"
+#   bucket = "bmc_power_management"
+#   timeout = "5s"
+#   namepass = ["bmc_power"]
+
+# # BMC System Status & Health
+# [[outputs.influxdb_v2]]
+#   urls = ["http://{{ influxdb_host }}:8086"]
+#   token = "{{ influxdb_token.content | b64decode | trim }}"
+#   organization = "{{ influxdb_org }}"
+#   bucket = "bmc_system"
+#   timeout = "5s"
+#   namepass = ["bmc_api_status", "bmc_ipmi_health"]
+
+# # ========== FIN AJOUT BMC ==========

@@ -1,0 +1,18 @@
+{
+  "services": [{
+    "name": "{{ item.name }}"{% if item.port is defined %},
+    "port": {{ item.port }}{% endif %}{% if item.tags is defined %},
+    "tags": ["{{ item.tags | join('\",\"') }}"]
+    {% endif %}{% if item.check_target is defined %},
+    "checks": [{
+      "id": "{{ item.name }}",
+      {% if item.type == "args"%}
+      "{{ item.type }}": ["{{ item.check_target }}"],
+      {% else %}
+      "{{ item.type }}": "{{ item.check_target }}",
+      {% endif %}
+      "interval": "{{ item.interval }}"
+    }]
+    {% endif %}
+  }]
+}

@@ -1,0 +1,41 @@
+---
+# Handlers pour le rôle energy_intelligence
+# File: ansible/roles/energy_intelligence/handlers/main.yml
+
+- name: reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: restart energy-ai-predictor
+  systemd:
+    name: energy-ai-predictor
+    state: restarted
+    daemon_reload: yes
+  ignore_errors: true
+
+- name: restart energy-scenarios
+  systemd:
+    name: energy-scenarios
+    state: restarted
+    daemon_reload: yes
+  ignore_errors: true
+
+- name: restart weather-ml
+  systemd:
+    name: weather-ml
+    state: restarted
+    daemon_reload: yes
+  ignore_errors: true
+
+- name: restart cost-optimizer
+  systemd:
+    name: cost-optimizer
+    state: restarted
+    daemon_reload: yes
+  ignore_errors: true
+
+- name: restart telegraf
+  systemd:
+    name: telegraf
+    state: restarted
+  ignore_errors: true

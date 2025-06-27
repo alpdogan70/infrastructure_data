@@ -1,0 +1,299 @@
+---
+# Infrastructure Energy AI - Suivant le pattern de votre infrastructure_iot_stack.yml
+# File: ansible/infrastructure_energy_ai.yml
+
+- name: Configure Energy AI Intelligence Server
+  hosts: meta-app_energy-ai
+  become: true
+  vars:
+    # Variables par défaut (fallback si pas de résolution IP)
+    mqtt_broker_host: "mqtt1"
+    influxdb_host: "influxdb1"
+    
+    # Configuration InfluxDB
+    influxdb_url: "http://{{ influxdb_host }}:8086"
+    influxdb_org: "iot"
+    
+    # Variables spécifiques Energy AI
+    energy_ai:
+      version: "1.0.0"
+      environment: "production"
+    
+    energy_ai_paths:
+      base: "/opt/energy-ai"
+      models: "/opt/energy-ai/models"
+      data: "/opt/energy-ai/data"
+      logs: "/opt/energy-ai/logs"
+      configs: "/opt/energy-ai/configs"
+      scenarios: "/opt/energy-ai/scenarios"
+    
+    python_ai:
+      version: "3"
+      venv_path: "/opt/energy-ai/venv"
+      requirements_file: "requirements_ai.txt"
+    
+    # Services Energy AI
+    energy_ai_services:
+      - name: "energy-ai-predictor"
+        description: "Intelligence Énergétique - Prédicteur IA"
+        restart_policy: "always"
+      - name: "energy-scenarios"
+        description: "Intelligence Énergétique - Moteur de Scénarios"
+        restart_policy: "always"
+      - name: "weather-ml"
+        description: "Intelligence Énergétique - ML Météo"
+        restart_policy: "always"
+      - name: "cost-optimizer"
+        description: "Intelligence Énergétique - Optimiseur de Coûts"
+        restart_policy: "always"
+    
+    # Configuration InfluxDB AI
+    influxdb_ai_buckets:
+      - name: "energy_ai"
+        description: "Données principales IA énergétique"
+        retention_days: 90
+      - name: "ai_predictions"
+        description: "Prédictions IA (court terme)"
+        retention_days: 30
+      - name: "energy_scenarios"
+        description: "Scénarios énergétiques exécutés"
+        retention_days: 60
+      - name: "model_performance"
+        description: "Performance des modèles IA"
+        retention_days: 365
+      - name: "carbon_metrics"
+        description: "Métriques empreinte carbone"
+        retention_days: 365
+    
+    # Configuration MQTT pour IA
+    mqtt_ai:
+      topics:
+        predictions: "energy/ai/predictions"
+        scenarios: "energy/ai/scenarios"
+        recommendations: "energy/ai/recommendations"
+        performance: "energy/ai/performance"
+        weather_ml: "energy/ai/weather"
+        cost_optimization: "energy/ai/costs"
+    
+    # APIs externes (optionnel)
+    external_apis:
+      weather:
+        api_key: "{{ vault_weather_api_key | default('demo_key') }}"
+    
+    # Configuration volumes (si besoin de stockage persistant)
+    volumes_disks:
+      - { disk: '/dev/vdb', path: '/opt/energy-ai/data', owner: "root" }
+
+  pre_tasks:
+    - name: "📊 Collecte des facts depuis MQTT broker"
+      setup:
+      delegate_to: "{{ groups['meta-app_mqtt'][0] }}"
+      delegate_facts: true
+      when: groups['meta-app_mqtt'] is defined and groups['meta-app_mqtt']|length > 0
+      
+    - name: "📊 Collecte des facts depuis InfluxDB"
+      setup:
+      delegate_to: "{{ groups['meta-app_influxdb'][0] }}"
+      delegate_facts: true
+      when: groups['meta-app_influxdb'] is defined and groups['meta-app_influxdb']|length > 0
+      
+    - name: "📡 Définition IP MQTT broker"
+      set_fact:
+        mqtt_broker_host: "{{ hostvars[groups['meta-app_mqtt'][0]]['ansible_default_ipv4']['address'] }}"
+      when: 
+        - groups['meta-app_mqtt'] is defined and groups['meta-app_mqtt']|length > 0
+        - hostvars[groups['meta-app_mqtt'][0]]['ansible_default_ipv4'] is defined
+        
+    - name: "🗄️ Définition IP InfluxDB"
+      set_fact:
+        influxdb_host: "{{ hostvars[groups['meta-app_influxdb'][0]]['ansible_default_ipv4']['address'] }}"
+      when: 
+        - groups['meta-app_influxdb'] is defined and groups['meta-app_influxdb']|length > 0
+        - hostvars[groups['meta-app_influxdb'][0]]['ansible_default_ipv4'] is defined
+        
+    - name: "🔑 Récupération token InfluxDB"
+      slurp:
+        src: /etc/influxdb2/admin-token
+      register: influxdb_token
+      delegate_to: "{{ groups['meta-app_influxdb'][0] }}"
+      become: yes
+      retries: 3
+      delay: 10
+      until: influxdb_token is not failed
+      when: groups['meta-app_influxdb'] is defined and groups['meta-app_influxdb']|length > 0
+        
+    - name: "🔍 Debug des adresses IP résolues"
+      debug:
+        msg: |
+          🎯 Configuration Energy AI:
+          📡 MQTT Broker: {{ mqtt_broker_host }}
+          🗄️ InfluxDB: {{ influxdb_host }}
+          🏗️ Répertoire base: {{ energy_ai_paths.base }}
+          🐍 Python venv: {{ python_ai.venv_path }}
+          🔑 Token InfluxDB: {{ 'Récupéré' if influxdb_token is defined and influxdb_token.content is defined else 'Non disponible' }}
+
+  roles:
+    # Rôles de base (si volumes nécessaires)
+    - role: volumes
+      when: volumes_disks is defined and volumes_disks|length > 0
+    
+    # Rôle Consul (si disponible)
+    - role: consul/consul
+      when: "'consul' in groups"
+    
+    # 🆕 NOUVEAU : Rôle Intelligence Énergétique
+    - role: energy_intelligence
+    
+    # Services de monitoring (si disponibles)
+    - role: monitoring/custom_metrics
+      when: "'monitoring' in groups"
+
+# ---
+# # Infrastructure Energy AI - Suivant le pattern de votre infrastructure_iot_stack.yml
+# # File: ansible/infrastructure_energy_ai.yml
+
+# - name: Configure Energy AI Intelligence Server
+#   hosts: meta-app_energy-ai
+#   become: true
+#   vars:
+#     # Variables par défaut (fallback si pas de résolution IP)
+#     mqtt_broker_host: "mqtt1"
+#     influxdb_host: "influxdb1"
+    
+#     # Configuration InfluxDB
+#     influxdb_url: "http://{{ influxdb_host }}:8086"
+#     influxdb_org: "iot"
+    
+#     # Variables spécifiques Energy AI
+#     energy_ai:
+#       version: "1.0.0"
+#       environment: "production"
+    
+#     energy_ai_paths:
+#       base: "/opt/energy-ai"
+#       models: "/opt/energy-ai/models"
+#       data: "/opt/energy-ai/data"
+#       logs: "/opt/energy-ai/logs"
+#       configs: "/opt/energy-ai/configs"
+#       scenarios: "/opt/energy-ai/scenarios"
+    
+#     python_ai:
+#       version: "3"
+#       venv_path: "/opt/energy-ai/venv"
+#       requirements_file: "requirements_ai.txt"
+    
+#     # Services Energy AI
+#     energy_ai_services:
+#       - name: "energy-ai-predictor"
+#         description: "Intelligence Énergétique - Prédicteur IA"
+#         restart_policy: "always"
+#       - name: "energy-scenarios"
+#         description: "Intelligence Énergétique - Moteur de Scénarios"
+#         restart_policy: "always"
+#       - name: "weather-ml"
+#         description: "Intelligence Énergétique - ML Météo"
+#         restart_policy: "always"
+#       - name: "cost-optimizer"
+#         description: "Intelligence Énergétique - Optimiseur de Coûts"
+#         restart_policy: "always"
+    
+#     # Configuration InfluxDB AI
+#     influxdb_ai_buckets:
+#       - name: "energy_ai"
+#         description: "Données principales IA énergétique"
+#         retention_days: 90
+#       - name: "ai_predictions"
+#         description: "Prédictions IA (court terme)"
+#         retention_days: 30
+#       - name: "energy_scenarios"
+#         description: "Scénarios énergétiques exécutés"
+#         retention_days: 60
+#       - name: "model_performance"
+#         description: "Performance des modèles IA"
+#         retention_days: 365
+#       - name: "carbon_metrics"
+#         description: "Métriques empreinte carbone"
+#         retention_days: 365
+    
+#     # Configuration MQTT pour IA
+#     mqtt_ai:
+#       topics:
+#         predictions: "energy/ai/predictions"
+#         scenarios: "energy/ai/scenarios"
+#         recommendations: "energy/ai/recommendations"
+#         performance: "energy/ai/performance"
+#         weather_ml: "energy/ai/weather"
+#         cost_optimization: "energy/ai/costs"
+    
+#     # APIs externes (optionnel)
+#     external_apis:
+#       weather:
+#         api_key: "{{ vault_weather_api_key | default('demo_key') }}"
+    
+#     # Configuration volumes (si besoin de stockage persistant)
+#     volumes_disks:
+#       - { disk: '/dev/vdb', path: '/opt/energy-ai/data', owner: "root" }
+
+#   pre_tasks:
+#     - name: "📊 Collecte des facts depuis MQTT broker"
+#       setup:
+#       delegate_to: "{{ groups['meta-app_mqtt'][0] }}"
+#       delegate_facts: true
+#       when: groups['meta-app_mqtt'] is defined and groups['meta-app_mqtt']|length > 0
+      
+#     - name: "📊 Collecte des facts depuis InfluxDB"
+#       setup:
+#       delegate_to: "{{ groups['meta-app_influxdb'][0] }}"
+#       delegate_facts: true
+#       when: groups['meta-app_influxdb'] is defined and groups['meta-app_influxdb']|length > 0
+      
+#     - name: "📡 Définition IP MQTT broker"
+#       set_fact:
+#         mqtt_broker_host: "{{ hostvars[groups['meta-app_mqtt'][0]]['ansible_default_ipv4']['address'] }}"
+#       when: 
+#         - groups['meta-app_mqtt'] is defined and groups['meta-app_mqtt']|length > 0
+#         - hostvars[groups['meta-app_mqtt'][0]]['ansible_default_ipv4'] is defined
+        
+#     - name: "🗄️ Définition IP InfluxDB"
+#       set_fact:
+#         influxdb_host: "{{ hostvars[groups['meta-app_influxdb'][0]]['ansible_default_ipv4']['address'] }}"
+#       when: 
+#         - groups['meta-app_influxdb'] is defined and groups['meta-app_influxdb']|length > 0
+#         - hostvars[groups['meta-app_influxdb'][0]]['ansible_default_ipv4'] is defined
+        
+#     - name: "🔑 Récupération token InfluxDB"
+#       slurp:
+#         src: /etc/influxdb2/admin-token
+#       register: influxdb_token
+#       delegate_to: "{{ groups['meta-app_influxdb'][0] }}"
+#       become: yes
+#       retries: 3
+#       delay: 10
+#       until: influxdb_token is not failed
+#       when: groups['meta-app_influxdb'] is defined and groups['meta-app_influxdb']|length > 0
+        
+#     - name: "🔍 Debug des adresses IP résolues"
+#       debug:
+#         msg: |
+#           🎯 Configuration Energy AI:
+#           📡 MQTT Broker: {{ mqtt_broker_host }}
+#           🗄️ InfluxDB: {{ influxdb_host }}
+#           🏗️ Répertoire base: {{ energy_ai_paths.base }}
+#           🐍 Python venv: {{ python_ai.venv_path }}
+#           🔑 Token InfluxDB: {{ 'Récupéré' if influxdb_token is defined and influxdb_token.content is defined else 'Non disponible' }}
+
+#   roles:
+#     # Rôles de base (si volumes nécessaires)
+#     - role: volumes
+#       when: volumes_disks is defined and volumes_disks|length > 0
+    
+#     # Rôle Consul (si disponible)
+#     - role: consul/consul
+#       when: "'consul' in groups"
+    
+#     # 🆕 NOUVEAU : Rôle Intelligence Énergétique
+#     - role: energy_intelligence
+    
+#     # Services de monitoring (si disponibles)
+#     - role: monitoring/custom_metrics
+#       when: "'monitoring' in groups"

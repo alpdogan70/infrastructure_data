@@ -1,0 +1,11 @@
+groups:
+  - name: backup_consul
+    rules:
+    - alert: No backup since 24h
+      expr: now() - backup_end_timestamp > 86410
+      for: 10m
+      labels:
+        severity: critical
+      annotations:
+        summary: "{{ $labels.instance }} - backup failed or too long"
+        description: "backup failed or too long"

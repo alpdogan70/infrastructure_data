@@ -1,0 +1,433 @@
+---
+# Définir le chemin du token
+- name: Set token file path
+  set_fact:
+    influxdb_token_path: "/etc/influxdb2/admin-token"
+
+# Vérifier si un token existe déjà dans un fichier
+- name: Check if token file exists
+  stat:
+    path: "{{ influxdb_token_path }}"
+  register: token_file_stat
+
+- name: Read existing token from file
+  slurp:
+    src: "{{ influxdb_token_path }}"
+  register: existing_token_file
+  when: token_file_stat.stat.exists
+
+- name: Set token from file
+  set_fact:
+    influxdb_generated_token: "{{ existing_token_file.content | b64decode | trim }}"
+  when: 
+    - token_file_stat.stat.exists
+    - existing_token_file.content is defined
+    - existing_token_file.content | b64decode | trim != ""
+
+- name: Display token source
+  debug:
+    msg: |
+      Token file exists: {{ token_file_stat.stat.exists }}
+      Token from file: {{ influxdb_generated_token[:20] if influxdb_generated_token is defined else 'NOT FOUND' }}...
+
+# Si pas de token dans le fichier, essayer via CLI
+- name: Try to retrieve token via CLI if no file
+  block:
+    - name: Check InfluxDB status first
+      uri:
+        url: "http://localhost:8086/health"
+        method: GET
+      register: influxdb_health
+      failed_when: false
+
+    - name: Configure CLI temporarily
+      shell: |
+        export INFLUX_CONFIGS_PATH=/tmp/.influxdbv2
+        influx config create \
+          --config-name ansible-temp \
+          --host-url http://localhost:8086 \
+          --org {{ influxdb_org }} \
+          --username-password {{ influxdb_admin_user }}:{{ influxdb_admin_password }} \
+          --active
+      register: influx_cli_config
+      failed_when: false
+      when: influxdb_health.status == 200
+
+    - name: List existing tokens via CLI
+      shell: |
+        export INFLUX_CONFIGS_PATH=/tmp/.influxdbv2
+        influx auth list --org {{ influxdb_org }} --hide-headers | head -1 | awk '{print $3}'
+      register: cli_token
+      when: 
+        - influx_cli_config is defined
+        - influx_cli_config.rc == 0
+
+    - name: Create new token if none exists
+      shell: |
+        export INFLUX_CONFIGS_PATH=/tmp/.influxdbv2
+        influx auth create \
+          --org {{ influxdb_org }} \
+          --description "Admin token created by Ansible $(date)" \
+          --all-access \
+          --hide-headers | awk '{print $3}'
+      register: new_token
+      when: 
+        - influx_cli_config is defined
+        - influx_cli_config.rc == 0
+        - cli_token is defined
+        - (cli_token.stdout | default('') | trim) == ''
+
+    - name: Set token from CLI operations
+      set_fact:
+        influxdb_generated_token: "{{ (cli_token.stdout | trim) if (cli_token.stdout | default('') | trim) != '' else (new_token.stdout | trim) }}"
+      when: 
+        - influxdb_generated_token is not defined
+        - (cli_token is defined and cli_token.stdout | default('') | trim != '') or (new_token is defined and new_token.stdout | default('') | trim != '')
+
+    - name: Save retrieved token to file
+      copy:
+        content: "{{ influxdb_generated_token }}"
+        dest: "{{ influxdb_token_path }}"
+        owner: influxdb
+        group: influxdb
+        mode: '0600'
+      when:
+        - influxdb_generated_token is defined
+        - influxdb_generated_token | trim != ''
+
+    - name: Clean up temp config
+      file:
+        path: /tmp/.influxdbv2
+        state: absent
+  when: 
+    - influxdb_generated_token is not defined
+    - influxdb_health is undefined or influxdb_health.status == 200
+
+# Utiliser l'API comme dernier recours
+- name: Get token via API as last resort
+  block:
+    - name: Install python requests if needed
+      package:
+        name: python3-requests
+        state: present
+
+    - name: Get token using API
+      uri:
+        url: "http://localhost:8086/api/v2/signin"
+        method: POST
+        body_format: json
+        body:
+          username: "{{ influxdb_admin_user }}"
+          password: "{{ influxdb_admin_password }}"
+        status_code: 204
+      register: api_signin
+
+    - name: Get organizations
+      uri:
+        url: "http://localhost:8086/api/v2/orgs"
+        method: GET
+        headers:
+          Cookie: "{{ api_signin.set_cookie }}"
+      register: api_orgs
+      when: api_signin.status == 204
+
+    - name: Extract org ID
+      set_fact:
+        org_id: "{{ item.id }}"
+      loop: "{{ api_orgs.json.orgs }}"
+      when: 
+        - api_orgs is defined
+        - item.name == influxdb_org
+
+    - name: Get existing authorizations
+      uri:
+        url: "http://localhost:8086/api/v2/authorizations"
+        method: GET
+        headers:
+          Cookie: "{{ api_signin.set_cookie }}"
+      register: api_auths
+      when: org_id is defined
+
+    - name: Use existing active token
+      set_fact:
+        influxdb_generated_token: "{{ item.token }}"
+      loop: "{{ api_auths.json.authorizations }}"
+      when:
+        - api_auths is defined
+        - item.status == 'active'
+        - influxdb_generated_token is not defined
+
+    - name: Create new token via API if needed
+      uri:
+        url: "http://localhost:8086/api/v2/authorizations"
+        method: POST
+        headers:
+          Cookie: "{{ api_signin.set_cookie }}"
+        body_format: json
+        body:
+          description: "Ansible admin token - {{ ansible_date_time.iso8601 }}"
+          orgID: "{{ org_id }}"
+          permissions:
+            - action: read
+              resource:
+                type: buckets
+                orgID: "{{ org_id }}"
+            - action: write
+              resource:
+                type: buckets
+                orgID: "{{ org_id }}"
+            - action: read
+              resource:
+                type: authorizations
+                orgID: "{{ org_id }}"
+            - action: write
+              resource:
+                type: authorizations
+                orgID: "{{ org_id }}"
+        status_code: 201
+      register: api_new_token
+      when:
+        - org_id is defined
+        - influxdb_generated_token is not defined
+
+    - name: Set token from API creation
+      set_fact:
+        influxdb_generated_token: "{{ api_new_token.json.token }}"
+      when: 
+        - api_new_token is defined
+        - api_new_token.status == 201
+
+    - name: Save API token to file
+      copy:
+        content: "{{ influxdb_generated_token }}"
+        dest: "{{ influxdb_token_path }}"
+        owner: influxdb
+        group: influxdb
+        mode: '0600'
+      when: 
+        - influxdb_generated_token is defined
+        - influxdb_generated_token | trim != ''
+  when: influxdb_generated_token is not defined
+  ignore_errors: true
+
+- name: Final check for token
+  fail:
+    msg: |
+      ❌ No InfluxDB token could be retrieved. 
+      Please check InfluxDB setup and ensure the service is running.
+      Try: systemctl status influxdb
+  when: influxdb_generated_token is not defined or influxdb_generated_token | trim == ''
+
+- name: Verify token works
+  uri:
+    url: "http://localhost:8086/api/v2/buckets"
+    method: GET
+    headers:
+      Authorization: "Token {{ influxdb_generated_token }}"
+    status_code: 200
+  register: token_test
+  failed_when: false
+
+- name: Display token status
+  debug:
+    msg: |
+      ✅ Token retrieved successfully
+      Token (first 20 chars): {{ influxdb_generated_token[:20] }}...
+      Token is valid: {{ token_test.status == 200 }}
+      Token saved to: {{ influxdb_token_path }}
+
+# Partager le token avec tous les hôtes
+- name: Share token to all hosts
+  set_fact:
+    influxdb_token_shared: "{{ influxdb_generated_token }}"
+  delegate_to: "{{ item }}"
+  delegate_facts: true
+  with_items: "{{ groups['all'] }}"
+  when: influxdb_generated_token is defined
+
+# ---
+# # Vérifier si un token existe déjà dans un fichier
+# - name: Check if token file exists
+#   stat:
+#     path: "{{ influxdb_token_path }}"
+#   register: token_file_stat
+
+# - name: Read existing token from file
+#   slurp:
+#     src: "{{ influxdb_token_path }}"
+#   register: existing_token_file
+#   when: token_file_stat.stat.exists
+
+# - name: Set token from file
+#   set_fact:
+#     influxdb_generated_token: "{{ existing_token_file.content | b64decode | trim }}"
+#   when: 
+#     - token_file_stat.stat.exists
+#     - existing_token_file.content is defined
+
+# # Si pas de token dans le fichier, essayer via CLI
+# - name: Try to retrieve token via CLI if no file
+#   block:
+#     - name: Configure CLI temporarily
+#       shell: |
+#         influx config create \
+#           --config-name ansible-temp \
+#           --host-url http://localhost:8086 \
+#           --org {{ influxdb_org }} \
+#           --username {{ influxdb_admin_user }} \
+#           --password '{{ influxdb_admin_password }}' \
+#           --active
+#       environment:
+#         INFLUX_CONFIGS_PATH: /tmp/.influxdbv2
+#       register: influx_cli_config
+#       failed_when: false
+
+#     - name: List tokens via CLI
+#       shell: |
+#         influx auth list --org {{ influxdb_org }} --hide-headers | head -1 | awk '{print $3}'
+#       environment:
+#         INFLUX_CONFIGS_PATH: /tmp/.influxdbv2
+#       register: cli_token
+#       when: influx_cli_config.rc == 0
+
+#     - name: Create new token if none exists
+#       shell: |
+#         influx auth create \
+#           --org {{ influxdb_org }} \
+#           --description "Admin token created by Ansible" \
+#           --all-access \
+#           --hide-headers | awk '{print $3}'
+#       environment:
+#         INFLUX_CONFIGS_PATH: /tmp/.influxdbv2
+#       register: new_token
+#       when: 
+#         - influx_cli_config.rc == 0
+#         - cli_token.stdout | default('') == ''
+
+#     - name: Set token from CLI
+#       set_fact:
+#         influxdb_generated_token: "{{ cli_token.stdout if cli_token.stdout | default('') != '' else new_token.stdout | default('') }}"
+#       when: influxdb_generated_token is not defined
+
+#     - name: Save retrieved token to file
+#       copy:
+#         content: "{{ influxdb_generated_token }}"
+#         dest: "{{ influxdb_token_path }}"
+#         owner: influxdb
+#         group: influxdb
+#         mode: '0600'
+#       when:
+#         - influxdb_generated_token is defined
+#         - influxdb_generated_token != ''
+
+#     - name: Clean up temp config
+#       file:
+#         path: /tmp/.influxdbv2
+#         state: absent
+#   when: influxdb_generated_token is not defined
+
+# # Utiliser l'API comme dernier recours
+# - name: Get token via API as last resort
+#   block:
+#     - name: Install python requests if needed
+#       package:
+#         name: python3-requests
+#         state: present
+
+#     - name: Get token using Python script
+#       shell: |
+#         cat > /tmp/get_token.py << 'EOF'
+#         import requests
+#         import json
+        
+#         # Login
+#         r = requests.post('http://localhost:8086/api/v2/signin', 
+#                           json={'username': '{{ influxdb_admin_user }}', 'password': '{{ influxdb_admin_password }}'})
+#         if r.status_code == 204:
+#             cookies = r.cookies
+#             # Get org
+#             r = requests.get('http://localhost:8086/api/v2/orgs', cookies=cookies)
+#             org_id = None
+#             for org in r.json()['orgs']:
+#                 if org['name'] == '{{ influxdb_org }}':
+#                     org_id = org['id']
+#                     break
+            
+#             if org_id:
+#                 # Get tokens
+#                 r = requests.get('http://localhost:8086/api/v2/authorizations', cookies=cookies)
+#                 for auth in r.json()['authorizations']:
+#                     if auth['status'] == 'active':
+#                         print(auth['token'])
+#                         exit(0)
+                
+#                 # Create new token
+#                 r = requests.post('http://localhost:8086/api/v2/authorizations',
+#                                   cookies=cookies,
+#                                   json={
+#                                       'description': 'Ansible admin token',
+#                                       'orgID': org_id,
+#                                       'permissions': [
+#                                           {'action': 'read', 'resource': {'type': 'buckets', 'orgID': org_id}},
+#                                           {'action': 'write', 'resource': {'type': 'buckets', 'orgID': org_id}}
+#                                       ]
+#                                   })
+#                 if r.status_code == 201:
+#                     print(r.json()['token'])
+#         EOF
+#         python3 /tmp/get_token.py
+#       register: api_token
+#       failed_when: false
+
+#     - name: Clean up Python script
+#       file:
+#         path: /tmp/get_token.py
+#         state: absent
+
+#     - name: Set token from API
+#       set_fact:
+#         influxdb_generated_token: "{{ api_token.stdout | trim }}"
+#       when: 
+#         - api_token.rc == 0
+#         - api_token.stdout | trim != ''
+
+#     - name: Save API token to file
+#       copy:
+#         content: "{{ influxdb_generated_token }}"
+#         dest: "{{ influxdb_token_path }}"
+#         owner: influxdb
+#         group: influxdb
+#         mode: '0600'
+#       when: influxdb_generated_token is defined
+#   when: influxdb_generated_token is not defined
+#   ignore_errors: true
+
+# - name: Final check for token
+#   fail:
+#     msg: "❌ No InfluxDB token could be retrieved. Please check InfluxDB setup."
+#   when: influxdb_generated_token is not defined or influxdb_generated_token == ''
+
+# - name: Verify token works
+#   uri:
+#     url: "http://localhost:8086/api/v2/buckets"
+#     method: GET
+#     headers:
+#       Authorization: "Token {{ influxdb_generated_token }}"
+#     status_code: 200
+#   register: token_test
+#   failed_when: false
+
+# - name: Display token status
+#   debug:
+#     msg: |
+#       ✅ Token retrieved successfully
+#       Token (first 20 chars): {{ influxdb_generated_token[:20] }}...
+#       Token is valid: {{ token_test.status == 200 }}
+
+# # Partager le token avec tous les hôtes
+# - name: Share token to all hosts
+#   set_fact:
+#     influxdb_token_shared: "{{ influxdb_generated_token }}"
+#   delegate_to: "{{ item }}"
+#   delegate_facts: true
+#   with_items: "{{ groups['all'] }}"

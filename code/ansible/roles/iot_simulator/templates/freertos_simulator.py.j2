@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""
+FreeRTOS IoT Device Simulator
+Simulates multiple IoT devices sending sensor data via MQTT
+"""
+
+import json
+import random
+import time
+import threading
+import paho.mqtt.client as mqtt
+from datetime import datetime
+from faker import Faker
+
+fake = Faker()
+
+# MQTT Configuration
+MQTT_BROKER = "{{ mqtt_broker_host }}"
+MQTT_PORT = 1883
+MQTT_USERNAME = "iot"
+MQTT_PASSWORD = "iot123"
+
+# Device simulation configuration
+NUM_DEVICES = 10
+SENSOR_TYPES = ["temperature", "humidity", "pressure"]
+LOCATIONS = ["building_a", "building_b", "outdoor", "server_room", "warehouse"]
+
+class IoTDevice:
+    def __init__(self, device_id):
+        self.device_id = f"device_{device_id:03d}"
+        self.location = random.choice(LOCATIONS)
+        self.sensor_type = random.choice(SENSOR_TYPES)
+        self.is_active = True
+        self.last_value = self._get_initial_value()
+        
+    def _get_initial_value(self):
+        if self.sensor_type == "temperature":
+            return random.uniform(20.0, 25.0)
+        elif self.sensor_type == "humidity":
+            return random.uniform(40.0, 60.0)
+        elif self.sensor_type == "pressure":
+            return random.uniform(1013.0, 1023.0)
+    
+    def get_reading(self):
+        # Simulate realistic sensor drift
+        drift = random.uniform(-0.5, 0.5)
+        self.last_value += drift
+        
+        # Keep values in realistic ranges
+        if self.sensor_type == "temperature":
+            self.last_value = max(15.0, min(35.0, self.last_value))
+        elif self.sensor_type == "humidity":
+            self.last_value = max(20.0, min(80.0, self.last_value))
+        elif self.sensor_type == "pressure":
+            self.last_value = max(990.0, min(1030.0, self.last_value))
+        
+        return {
+            "device_id": self.device_id,
+            "location": self.location,
+            "sensor_type": self.sensor_type,
+            "value": round(self.last_value, 2),
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "unit": self._get_unit(),
+            "status": "active" if self.is_active else "inactive"
+        }
+    
+    def _get_unit(self):
+        units = {
+            "temperature": "celsius",
+            "humidity": "percent",
+            "pressure": "hPa"
+        }
+        return units.get(self.sensor_type, "unknown")
+
+class FreeRTOSSimulator:
+    def __init__(self):
+        self.devices = [IoTDevice(i) for i in range(NUM_DEVICES)]
+        self.client = mqtt.Client(client_id=f"freertos_simulator_{random.randint(1000,9999)}")
+        self.client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+        self.client.on_connect = self.on_connect
+        self.client.on_disconnect = self.on_disconnect
+        self.running = True
+        
+    def on_connect(self, client, userdata, flags, rc):
+        if rc == 0:
+            print(f"Connected to MQTT broker at {MQTT_BROKER}")
+            # Send initial device status
+            for device in self.devices:
+                status_topic = f"devices/{device.device_id}/status"
+                status_payload = {
+                    "device_id": device.device_id,
+                    "status": "online",
+                    "location": device.location,
+                    "sensor_type": device.sensor_type,
+                    "firmware_version": "FreeRTOS-10.4.3",
+                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                }
+                client.publish(status_topic, json.dumps(status_payload), retain=True)
+        else:
+            print(f"Failed to connect, return code {rc}")
+            
+    def on_disconnect(self, client, userdata, rc):
+        print(f"Disconnected from MQTT broker, return code {rc}")
+    
+    def simulate_device(self, device):
+        """Simulate a single FreeRTOS task for a device"""
+        while self.running:
+            try:
+                reading = device.get_reading()
+                topic = f"sensors/{device.device_id}/{device.sensor_type}"
+                payload = json.dumps(reading)
+                
+                result = self.client.publish(topic, payload)
+                if result.rc == 0:
+                    print(f"Published: {topic} -> {reading['value']} {reading['unit']}")
+                
+                # Simulate FreeRTOS task delay
+                time.sleep(random.uniform(2, 8))
+                
+            except Exception as e:
+                print(f"Error in device {device.device_id}: {e}")
+                time.sleep(5)
+    
+    def send_system_metrics(self):
+        """Send aggregated system metrics"""
+        while self.running:
+            try:
+                metrics_topic = "devices/simulator/metrics"
+                metrics_payload = {
+                    "active_devices": sum(1 for d in self.devices if d.is_active),
+                    "total_devices": len(self.devices),
+                    "heap_free": random.randint(50000, 100000),
+                    "cpu_usage": round(random.uniform(10, 50), 2),
+                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                }
+                self.client.publish(metrics_topic, json.dumps(metrics_payload))
+                print(f"Published system metrics: {metrics_payload['active_devices']} active devices")
+                time.sleep(30)
+            except Exception as e:
+                print(f"Error sending metrics: {e}")
+                time.sleep(30)
+    
+    def run(self):
+        """Main FreeRTOS scheduler simulation"""
+        print("Starting FreeRTOS IoT Simulator...")
+        
+        # Connect to MQTT
+        try:
+            self.client.connect(MQTT_BROKER, MQTT_PORT, 60)
+            self.client.loop_start()
+        except Exception as e:
+            print(f"Failed to connect to MQTT broker: {e}")
+            return
+        
+        # Wait for connection
+        time.sleep(2)
+        
+        # Create threads for each device
+        threads = []
+        for device in self.devices:
+            thread = threading.Thread(target=self.simulate_device, args=(device,))
+            thread.daemon = True
+            thread.start()
+            threads.append(thread)
+        
+        # Start metrics thread
+        metrics_thread = threading.Thread(target=self.send_system_metrics)
+        metrics_thread.daemon = True
+        metrics_thread.start()
+        
+        # Keep running
+        try:
+            while self.running:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nShutting down simulator...")
+            self.running = False
+        
+        # Cleanup
+        self.client.loop_stop()
+        self.client.disconnect()
+
+if __name__ == "__main__":
+    simulator = FreeRTOSSimulator()
+    simulator.run()

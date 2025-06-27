@@ -1,0 +1,23 @@
+# ## Edited by ansible
+# {{ backups_consul_cron_schedule }} root touch /var/lib/cron/start_consul_backup.txt && /opt/scripts/backups/backup_consul.sh && touch /var/lib/cron/end_consul_backup.txt
+
+
+# Consul backup cron job
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Run backup every day at 2 AM
+{% if backups_consul_cron_schedule is defined %}
+{{ backups_consul_cron_schedule }} root /opt/scripts/backups/backup_consul.sh >> /var/log/backups/consul-cron.log 2>&1
+{% else %}
+0 10 * * * root /opt/scripts/backups/backup_consul.sh >> /var/log/backups/consul-cron.log 2>&1
+{% endif %}
+
+# # Run backup every day at 2 AM
+# {% if backups_consul_cron_schedule is defined %}
+# {{ backups_consul_cron_schedule }} root /opt/scripts/backups/backup_consul.sh >> /var/log/backups/consul-cron.log 2>&1
+# {% else %}
+# */5 * * * * root /opt/scripts/backups/backup_consul.sh >> /var/log/backups/consul-cron.log 2>&1
+# {% endif %}
+
+

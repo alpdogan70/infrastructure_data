@@ -1,0 +1,13 @@
+---
+# handlers file for roles/kubernetes
+- name: restart_containerd
+  ansible.builtin.service:
+    name: containerd
+    state: restarted
+
+- name: update_apt_cache
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: apply_coredns_configmap
+  ansible.builtin.shell: kubectl apply -n kube-system -f /etc/kubernetes/configmap-coredns-fix.yml

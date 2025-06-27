@@ -1,0 +1,191 @@
+---
+- name: Install Python dependencies
+  apt:
+    name:
+      - python3
+      - python3-pip
+      - python3-venv
+      - python3-dev
+    state: present
+    update_cache: yes
+
+- name: Create IoT simulator directory
+  file:
+    path: /opt/iot-simulator
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create Python virtual environment
+  command: python3 -m venv /opt/iot-simulator/venv
+  args:
+    creates: /opt/iot-simulator/venv
+
+- name: Upgrade pip in virtual environment
+  pip:
+    name: pip
+    state: latest
+    virtualenv: /opt/iot-simulator/venv
+
+- name: Install Python packages
+  pip:
+    name:
+      - paho-mqtt==1.6.1
+      - faker==18.13.0
+    virtualenv: /opt/iot-simulator/venv
+
+# Simulateur FreeRTOS original (capteurs IoT)
+- name: Copy FreeRTOS IoT simulator script
+  template:
+    src: freertos_simulator.py.j2
+    dest: /opt/iot-simulator/freertos_simulator.py
+    owner: root
+    group: root
+    mode: '0755'
+
+# Nouveau simulateur datacenter énergétique
+- name: Copy Datacenter Energy simulator script
+  template:
+    src: datacenter_energy_simulator.py.j2
+    dest: /opt/iot-simulator/datacenter_energy_simulator.py
+    owner: root
+    group: root
+    mode: '0755'
+
+# Services systemd
+- name: Create FreeRTOS systemd service
+  template:
+    src: freertos-simulator.service.j2
+    dest: /etc/systemd/system/freertos-simulator.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart freertos-simulator
+
+- name: Create Datacenter Energy systemd service
+  template:
+    src: datacenter-energy-simulator.service.j2
+    dest: /etc/systemd/system/datacenter-energy-simulator.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart datacenter-energy-simulator
+
+# Démarrage des services
+- name: Enable and start FreeRTOS simulator
+  systemd:
+    name: freertos-simulator
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Enable and start Datacenter Energy simulator
+  systemd:
+    name: datacenter-energy-simulator
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Display simulator status
+  debug:
+    msg: |
+      ✅ Simulateurs IoT déployés:
+      - FreeRTOS IoT Simulator: Capteurs génériques (température, humidité, pression)
+      - Datacenter Energy Simulator: Optimisation énergétique intelligente
+        * 40 panneaux solaires (16kW)
+        * Système de batteries 50kWh
+        * 24 serveurs avec charge variable
+        * Optimisation automatique selon tarifs électriques
+        * Topics MQTT: energy/solar/datacenter/*, energy/battery/datacenter/*, etc.
+
+# ---
+# - name: Install Python dependencies
+#   apt:
+#     name:
+#       - python3
+#       - python3-pip
+#       - python3-venv
+#       - python3-dev
+#     state: present
+#     update_cache: yes
+
+# - name: Create IoT simulator directory
+#   file:
+#     path: /opt/iot-simulator
+#     state: directory
+#     owner: root
+#     group: root
+#     mode: '0755'
+
+# - name: Create Python virtual environment
+#   command: python3 -m venv /opt/iot-simulator/venv
+#   args:
+#     creates: /opt/iot-simulator/venv
+
+# - name: Upgrade pip in virtual environment
+#   pip:
+#     name: pip
+#     state: latest
+#     virtualenv: /opt/iot-simulator/venv
+
+# - name: Install Python packages
+#   pip:
+#     name:
+#       - paho-mqtt==1.6.1
+#       - faker==18.13.0
+#     virtualenv: /opt/iot-simulator/venv
+
+# # Simulateur FreeRTOS original
+# - name: Copy FreeRTOS IoT simulator script
+#   template:
+#     src: freertos_simulator.py.j2
+#     dest: /opt/iot-simulator/freertos_simulator.py
+#     owner: root
+#     group: root
+#     mode: '0755'
+
+# # Nouveau simulateur énergétique
+# - name: Copy Energy IoT simulator script
+#   template:
+#     src: energy_simulator.py.j2
+#     dest: /opt/iot-simulator/energy_simulator.py
+#     owner: root
+#     group: root
+#     mode: '0755'
+
+# # Services systemd
+# - name: Create FreeRTOS systemd service
+#   template:
+#     src: freertos-simulator.service.j2
+#     dest: /etc/systemd/system/freertos-simulator.service
+#     owner: root
+#     group: root
+#     mode: '0644'
+#   notify: restart freertos-simulator
+
+# - name: Create Energy systemd service
+#   template:
+#     src: energy-simulator.service.j2
+#     dest: /etc/systemd/system/energy-simulator.service
+#     owner: root
+#     group: root
+#     mode: '0644'
+#   notify: restart energy-simulator
+
+# # Démarrage des services
+# - name: Enable and start FreeRTOS simulator
+#   systemd:
+#     name: freertos-simulator
+#     enabled: yes
+#     state: started
+#     daemon_reload: yes
+
+# - name: Enable and start Energy simulator
+#   systemd:
+#     name: energy-simulator
+#     enabled: yes
+#     state: started
+#     daemon_reload: yes
+
+

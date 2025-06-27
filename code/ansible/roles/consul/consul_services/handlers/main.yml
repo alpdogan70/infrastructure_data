@@ -1,0 +1,7 @@
+---
+# handlers file for roles/consul_services
+- name: reload_consul
+  systemd:
+    name: consul
+    state: reloaded
+  when : consul_services

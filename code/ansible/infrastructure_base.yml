@@ -1,0 +1,36 @@
+- name: base
+  hosts: all
+  become: true
+  vars:
+    vector_list: ["journald"]
+    sysctl_overwrite:
+      net.ipv4.ip_forward: 1
+    ssh_banner: true
+    ssh_print_motd: true
+    ssh_print_last_log: true
+    sftp_enabled: true
+    ssh_permit_tunnel: false
+    ssh_allow_tcp_forwarding: 'yes'
+    vault_xpestel_password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          30306537386338643066336234666632623639313537643730393132613738306132383238646637
+          6436326262326338656163656236633638303061643861630a346239376335656133613265383731
+          62336132323761656365353738353464343064643631636265313434313961343164343736353266
+          6338343637643862610a656461643933653032333034656632623437373531623232636633336234
+          3436
+  pre_tasks:
+    - name: Waiting compute...
+      wait_for_connection:
+        delay: 2
+        timeout: 300
+  collections:
+    - devsec.hardening
+  roles:
+    - base_server/base
+    - users
+    #- os_hardening
+    #- ssh_hardening
+    - base_server/dns-common
+    - monitoring/node_exporter
+    - logging/vector
+

@@ -1,0 +1,9 @@
+---
+# defaults file for roles/monitoring/grafana
+
+grafana_admin_user: "staner"
+grafana_admin_password: "123456"
+grafana_datasources:
+  - { name: "", type: "" } 
+grafana_dashboards:
+  - { label: "", json: "" }

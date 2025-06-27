@@ -1,0 +1,10 @@
+---
+# defaults file for roles/backups_consul
+
+backups_consul_s3_endpoint: "http://{{ hostvars[groups['meta-app_minio'][0]]['ansible_default_ipv4']['address'] }}:9000"
+backups_consul_s3_key: ""
+backups_consul_secret_key: ""
+backups_consul_secret_password: ""
+backups_consul_cron_schedule: "0 10 * * *"
+#backups_consul_cron_schedule: "*/5 * * * *"
+

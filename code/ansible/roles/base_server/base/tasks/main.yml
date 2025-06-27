@@ -1,0 +1,26 @@
+---
+# tasks file for roles/base
+
+- name: remove debian user
+  ansible.builtin.user:
+    name: debian
+    state: absent
+
+- name: install utils
+  ansible.builtin.apt:
+    name: curl,wget,unzip,net-tools,dnsutils,gnupg2,software-properties-common,cron,ca-certificates
+    state: present
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: ensure cron is started
+  service:
+    name: cron
+    state: started
+
+- name: install rkhunter & clamav
+  ansible.builtin.apt:
+    name: rkhunter,clamav
+    state: latest
+    update_cache: yes
+    cache_valid_time: 3600

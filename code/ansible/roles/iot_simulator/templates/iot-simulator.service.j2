@@ -1,0 +1,17 @@
+[Unit]
+Description=FreeRTOS IoT Device Simulator
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/iot-simulator
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/opt/iot-simulator/venv/bin/python /opt/iot-simulator/freertos_simulator.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

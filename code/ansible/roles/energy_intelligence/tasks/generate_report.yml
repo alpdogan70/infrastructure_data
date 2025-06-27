@@ -1,0 +1,137 @@
+---
+# Génération rapport déploiement IA énergétique
+# File: ansible/roles/energy_intelligence/tasks/generate_report.yml
+
+- name: "📊 Collecte informations déploiement"
+  set_fact:
+    deployment_info:
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+      version: "{{ energy_ai.version | default('1.0.0') }}"
+      environment: "{{ energy_ai.environment | default('production') }}"
+      host: "{{ inventory_hostname }}"
+      ip_address: "{{ ansible_default_ipv4.address }}"
+      python_version: "{{ python_version_check.stdout | default('Python 3.x') }}"
+
+- name: "🔍 Vérification statut services IA"
+  systemd:
+    name: "{{ item.name }}"
+  loop: "{{ energy_ai_services | default([]) }}"
+  register: services_status
+  ignore_errors: true
+
+- name: "📡 Test connectivité endpoints"
+  uri:
+    url: "{{ item.url }}"
+    method: GET
+    timeout: 5
+    status_code: 200
+  loop:
+    - { name: "InfluxDB", url: "http://{{ influxdb_host }}:8086/health" }
+    - { name: "MQTT", url: "http://{{ mqtt_broker_host }}:15672" }
+  register: endpoints_status
+  ignore_errors: true
+
+- name: "💾 Vérification espace disque"
+  setup:
+    gather_subset: "!all,hardware"
+
+- name: "📋 Génération rapport complet"
+  template:
+    src: reports/deployment_report.md.j2
+    dest: "{{ energy_ai_paths.logs | default('/opt/energy-ai/logs') }}/deployment_report_{{ ansible_date_time.date }}.md"
+    owner: root
+    group: root
+    mode: '0644'
+  vars:
+    services_summary: "{{ services_status.results | default([]) }}"
+    endpoints_summary: "{{ endpoints_status.results | default([]) }}"
+
+- name: "📧 Génération rapport JSON pour monitoring"
+  copy:
+    content: |
+      {
+        "deployment": {
+          "status": "{{ 'success' if (services_status.results | selectattr('status.ActiveState', 'equalto', 'active') | list | length) == (energy_ai_services | length) else 'partial' }}",
+          "timestamp": "{{ deployment_info.timestamp }}",
+          "version": "{{ deployment_info.version }}",
+          "environment": "{{ deployment_info.environment }}",
+          "host": {
+            "name": "{{ deployment_info.host }}",
+            "ip": "{{ deployment_info.ip_address }}",
+            "python": "{{ deployment_info.python_version }}"
+          },
+          "services": [
+            {% for service in services_status.results | default([]) %}
+            {
+              "name": "{{ service.item.name }}",
+              "status": "{{ service.status.ActiveState | default('unknown') }}",
+              "enabled": {{ service.status.UnitFileState == 'enabled' | default(false) | lower }}
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+          ],
+          "endpoints": [
+            {% for endpoint in endpoints_status.results | default([]) %}
+            {
+              "name": "{{ endpoint.item.name }}",
+              "url": "{{ endpoint.item.url }}",
+              "status": "{{ 'online' if endpoint.status == 200 else 'offline' }}"
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+          ],
+          "disk_usage": {
+            "total_gb": {{ (ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_total') | first / 1073741824) | round(2) }},
+            "available_gb": {{ (ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first / 1073741824) | round(2) }},
+            "used_percent": {{ ((ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_total') | first - ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first) / ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_total') | first * 100) | round(1) }}
+          }
+        }
+      }
+    dest: "{{ energy_ai_paths.logs | default('/opt/energy-ai/logs') }}/deployment_status.json"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: "📊 Envoi métriques déploiement vers InfluxDB"
+  uri:
+    url: "http://{{ influxdb_host }}:8086/api/v2/write"
+    method: POST
+    headers:
+      Authorization: "Token {{ influxdb_token.content | b64decode | trim }}"
+      Content-Type: "text/plain"
+    body: |
+      energy_ai_deployment,host={{ inventory_hostname }},version={{ energy_ai.version | default('1.0.0') }} deployment_status=1,services_active={{ services_status.results | selectattr('status.ActiveState', 'equalto', 'active') | list | length }},services_total={{ energy_ai_services | length | default(0) }},endpoints_online={{ endpoints_status.results | selectattr('status', 'equalto', 200) | list | length }} {{ ansible_date_time.epoch }}
+    query_string:
+      org: "{{ influxdb_org }}"
+      bucket: "energy_ai"
+      precision: "s"
+    status_code: 204
+  ignore_errors: true
+
+- name: "🎯 Affichage rapport final"
+  debug:
+    msg: |
+      🎉 DÉPLOIEMENT ENERGY AI TERMINÉ 🎉
+      
+      📅 Date: {{ deployment_info.timestamp }}
+      🏷️ Version: {{ deployment_info.version }}
+      🌍 Environnement: {{ deployment_info.environment }}
+      🖥️ Serveur: {{ deployment_info.host }} ({{ deployment_info.ip_address }})
+      
+      ⚙️ Services ({{ services_status.results | selectattr('status.ActiveState', 'equalto', 'active') | list | length }}/{{ energy_ai_services | length | default(0) }} actifs):
+      {% for service in services_status.results | default([]) %}
+      {{ '✅' if service.status.ActiveState == 'active' else '❌' }} {{ service.item.name }} - {{ service.status.ActiveState | default('unknown') }}
+      {% endfor %}
+      
+      🌐 Connectivité ({{ endpoints_status.results | selectattr('status', 'equalto', 200) | list | length }}/{{ endpoints_status.results | length }} OK):
+      {% for endpoint in endpoints_status.results | default([]) %}
+      {{ '✅' if endpoint.status == 200 else '❌' }} {{ endpoint.item.name }}
+      {% endfor %}
+      
+      💾 Espace disque: {{ ((ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_total') | first - ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first) / ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_total') | first * 100) | round(1) }}% utilisé
+      
+      📋 Rapports générés:
+      📄 {{ energy_ai_paths.logs | default('/opt/energy-ai/logs') }}/deployment_report_{{ ansible_date_time.date }}.md
+      📊 {{ energy_ai_paths.logs | default('/opt/energy-ai/logs') }}/deployment_status.json
+      
+      🔗 Dashboards Grafana: http://{{ ansible_default_ipv4.address }}/d/energy-ai-intelligence
+      
+      {{ '🎯 DÉPLOIEMENT RÉUSSI!' if (services_status.results | selectattr('status.ActiveState', 'equalto', 'active') | list | length) == (energy_ai_services | length) else '⚠️ DÉPLOIEMENT PARTIEL - Vérifier les services' }}

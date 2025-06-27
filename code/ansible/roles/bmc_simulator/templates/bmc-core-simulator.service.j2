@@ -1,0 +1,17 @@
+[Unit]
+Description=BMC Aspeed AST2600 Core Simulator
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bmc-simulator
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/opt/bmc-simulator/venv/bin/python /opt/bmc-simulator/bmc_core_simulator.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

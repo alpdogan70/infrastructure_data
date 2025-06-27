@@ -1,0 +1,14 @@
+---
+# handlers file for roles/logging/vector
+- name: restart_vector
+  service:
+    name: vector
+    state: restarted
+    enabled: yes
+    daemon-reload: yes
+
+- name: reload_vector
+  service:
+    name: vector
+    state: reloaded 
+

@@ -1,0 +1,8 @@
+---
+# handlers file for roles/logging/loki
+
+- name: restart_loki
+  systemd:
+    name: loki
+    state: restarted
+    enabled: yes  

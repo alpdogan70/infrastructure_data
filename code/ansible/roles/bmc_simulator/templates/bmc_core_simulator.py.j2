@@ -1,0 +1,390 @@
+#!/usr/bin/env python3
+"""
+BMC Aspeed AST2600 Core Simulator
+Simulates complete BMC functionality for datacenter servers
+File: /ansible/roles/bmc_simulator/templates/bmc_core_simulator.py.j2
+"""
+
+import json
+import random
+import time
+import threading
+import paho.mqtt.client as mqtt
+from datetime import datetime
+import psutil
+import socket
+
+# Configuration from Ansible variables
+MQTT_BROKER = "{{ mqtt_broker_host }}"
+MQTT_PORT = 1883
+MQTT_USERNAME = "iot"
+MQTT_PASSWORD = "iot123"
+
+class AspeedAST2600Simulator:
+    def __init__(self):
+        self.client = mqtt.Client(client_id=f"bmc_ast2600_{random.randint(1000,9999)}")
+        self.client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+        self.client.on_connect = self.on_connect
+        self.client.on_message = self.on_message
+        self.running = True
+        
+        # BMC Hardware Info (Aspeed AST2600)
+        self.bmc_info = {
+            "manufacturer": "Aspeed Technology Inc.",
+            "product": "AST2600 A3",
+            "firmware_version": "2.15.0",
+            "bmc_ip": self._get_local_ip(),
+            "mac_address": self._generate_mac(),
+            "guid": self._generate_guid()
+        }
+        
+        # Simulated servers controlled by this BMC
+        self.servers = {
+            "server_01": {"power_state": "on", "boot_state": "running"},
+            "server_02": {"power_state": "on", "boot_state": "running"}, 
+            "server_03": {"power_state": "off", "boot_state": "shutdown"},
+            "server_04": {"power_state": "on", "boot_state": "running"},
+            "server_05": {"power_state": "on", "boot_state": "running"},
+            "server_06": {"power_state": "on", "boot_state": "running"},
+            "server_07": {"power_state": "off", "boot_state": "shutdown"},
+            "server_08": {"power_state": "on", "boot_state": "running"},
+            "server_09": {"power_state": "on", "boot_state": "running"},
+            "server_10": {"power_state": "on", "boot_state": "running"},
+            "server_11": {"power_state": "on", "boot_state": "running"},
+            "server_12": {"power_state": "on", "boot_state": "running"}
+        }
+        
+        # Energy management integration
+        self.energy_data = {
+            "battery_soc": 75.0,
+            "solar_production": 0.0,
+            "grid_power": 0.0,
+            "total_consumption": 0.0
+        }
+        
+        # BMC system status
+        self.bmc_status = {
+            "cpu_usage": 0.0,
+            "memory_usage": 0.0,
+            "temperature": 45.0,
+            "uptime": 0
+        }
+        
+    def _get_local_ip(self):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except:
+            return "192.168.1.100"
+    
+    def _generate_mac(self):
+        return "02:42:AC:" + ":".join([f"{random.randint(0, 255):02X}" for _ in range(3)])
+    
+    def _generate_guid(self):
+        return "-".join([f"{random.randint(0, 65535):04X}" for _ in range(4)])
+    
+    def on_connect(self, client, userdata, flags, rc):
+        if rc == 0:
+            print(f"🖥️ BMC AST2600 Simulator connected to MQTT broker at {MQTT_BROKER}")
+            # Subscribe to energy data and BMC commands
+            client.subscribe("energy/battery/datacenter/status")
+            client.subscribe("energy/solar/datacenter/production")
+            client.subscribe("energy/consumption/datacenter/metrics")
+            client.subscribe("bmc/server/+/command")
+            client.subscribe("bmc/datacenter/command")
+        else:
+            print(f"❌ Failed to connect, return code {rc}")
+    
+    def on_message(self, client, userdata, msg):
+        """Handle incoming MQTT messages"""
+        try:
+            topic = msg.topic
+            payload = json.loads(msg.payload.decode())
+            
+            # Energy data updates
+            if topic == "energy/battery/datacenter/status":
+                self.energy_data["battery_soc"] = payload.get("charge_level", 0)
+                self._check_energy_management()
+            elif topic == "energy/solar/datacenter/production":
+                self.energy_data["solar_production"] = payload.get("production_w", 0)
+            elif topic == "energy/consumption/datacenter/metrics":
+                self.energy_data["total_consumption"] = payload.get("total_consumption_w", 0)
+            
+            # BMC Commands
+            elif topic.startswith("bmc/server/") and topic.endswith("/command"):
+                server_id = topic.split("/")[2]
+                self._handle_server_command(server_id, payload)
+            elif topic == "bmc/datacenter/command":
+                self._handle_datacenter_command(payload)
+                
+        except Exception as e:
+            print(f"❌ Error processing message: {e}")
+    
+    def _check_energy_management(self):
+        """Check energy levels and manage servers automatically"""
+        battery_soc = self.energy_data["battery_soc"]
+        
+        # Critical battery level - shutdown non-essential servers
+        if battery_soc < 20:
+            print(f"⚠️ Critical battery level ({battery_soc}%) - Initiating emergency shutdown")
+            self._emergency_shutdown()
+        
+        # Low battery level - shutdown half of servers
+        elif battery_soc < 35:
+            print(f"⚠️ Low battery level ({battery_soc}%) - Shutting down non-critical servers")
+            self._graceful_partial_shutdown()
+        
+        # Good battery + solar production - can start more servers
+        elif battery_soc > 70 and self.energy_data["solar_production"] > 3000:
+            print(f"✅ Good energy conditions - Can start additional servers")
+            self._start_available_servers()
+    
+    def _emergency_shutdown(self):
+        """Emergency shutdown of all non-critical servers"""
+        critical_servers = ["server_01", "server_02"]  # Keep only essential servers
+        for server_id, status in self.servers.items():
+            if server_id not in critical_servers and status["power_state"] == "on":
+                self._power_off_server(server_id, emergency=True)
+    
+    def _graceful_partial_shutdown(self):
+        """Graceful shutdown of 50% of servers"""
+        running_servers = [sid for sid, status in self.servers.items() if status["power_state"] == "on"]
+        servers_to_shutdown = running_servers[len(running_servers)//2:]
+        
+        for server_id in servers_to_shutdown:
+            self._power_off_server(server_id, emergency=False)
+    
+    def _start_available_servers(self):
+        """Start servers that are currently off"""
+        for server_id, status in self.servers.items():
+            if status["power_state"] == "off" and random.random() < 0.3:  # 30% chance
+                self._power_on_server(server_id)
+                break  # Start one at a time
+    
+    def _handle_server_command(self, server_id, command):
+        """Handle individual server commands"""
+        if server_id not in self.servers:
+            return
+            
+        action = command.get("action", "")
+        
+        if action == "power_on":
+            self._power_on_server(server_id)
+        elif action == "power_off":
+            self._power_off_server(server_id, emergency=command.get("force", False))
+        elif action == "reset":
+            self._reset_server(server_id)
+        elif action == "status":
+            self._publish_server_status(server_id)
+    
+    def _handle_datacenter_command(self, command):
+        """Handle datacenter-wide commands"""
+        action = command.get("action", "")
+        
+        if action == "shutdown_all":
+            for server_id in self.servers:
+                self._power_off_server(server_id, emergency=False)
+        elif action == "start_all":
+            for server_id in self.servers:
+                if self.servers[server_id]["power_state"] == "off":
+                    self._power_on_server(server_id)
+        elif action == "status_all":
+            self._publish_all_server_status()
+    
+    def _power_on_server(self, server_id):
+        """Power on a server"""
+        if self.servers[server_id]["power_state"] == "off":
+            self.servers[server_id]["power_state"] = "on"
+            self.servers[server_id]["boot_state"] = "booting"
+            
+            print(f"🔌 Powering ON server {server_id}")
+            
+            # Simulate boot sequence
+            threading.Thread(target=self._simulate_boot_sequence, args=(server_id,), daemon=True).start()
+    
+    def _power_off_server(self, server_id, emergency=False):
+        """Power off a server"""
+        if self.servers[server_id]["power_state"] == "on":
+            self.servers[server_id]["power_state"] = "off"
+            self.servers[server_id]["boot_state"] = "shutdown"
+            
+            shutdown_type = "EMERGENCY" if emergency else "GRACEFUL"
+            print(f"🔴 Powering OFF server {server_id} ({shutdown_type})")
+            
+            self._publish_server_status(server_id)
+    
+    def _reset_server(self, server_id):
+        """Reset a server"""
+        print(f"🔄 Resetting server {server_id}")
+        self.servers[server_id]["boot_state"] = "rebooting"
+        
+        # Simulate reset sequence
+        threading.Thread(target=self._simulate_boot_sequence, args=(server_id,), daemon=True).start()
+    
+    def _simulate_boot_sequence(self, server_id):
+        """Simulate server boot sequence"""
+        boot_stages = ["bios", "loading", "os_boot", "running"]
+        
+        for stage in boot_stages:
+            self.servers[server_id]["boot_state"] = stage
+            self._publish_server_status(server_id)
+            time.sleep(random.uniform(2, 5))  # Random boot time
+        
+        print(f"✅ Server {server_id} boot complete")
+    
+    def simulate_server_sensors(self):
+        """Simulate server hardware sensors"""
+        while self.running:
+            try:
+                for server_id, status in self.servers.items():
+                    if status["power_state"] == "on":
+                        # CPU temperatures (per core)
+                        cpu_temps = [round(random.uniform(45, 85), 1) for _ in range(8)]
+                        
+                        # System temperatures
+                        system_temp = round(random.uniform(35, 55), 1)
+                        inlet_temp = round(random.uniform(20, 30), 1)
+                        
+                        # Fan speeds (RPM)
+                        fan_speeds = [random.randint(2000, 6000) for _ in range(6)]
+                        
+                        # Voltages
+                        voltages = {
+                            "12V": round(random.uniform(11.8, 12.2), 2),
+                            "5V": round(random.uniform(4.9, 5.1), 2),
+                            "3.3V": round(random.uniform(3.25, 3.35), 2),
+                            "1.8V": round(random.uniform(1.75, 1.85), 2)
+                        }
+                        
+                        # Power consumption
+                        base_power = random.uniform(150, 400)
+                        if status["boot_state"] == "running":
+                            power_consumption = base_power * random.uniform(0.6, 1.0)
+                        else:
+                            power_consumption = base_power * 0.1
+                        
+                        sensor_data = {
+                            "server_id": server_id,
+                            "power_state": status["power_state"],
+                            "boot_state": status["boot_state"],
+                            "cpu_temperatures": cpu_temps,
+                            "system_temperature": system_temp,
+                            "inlet_temperature": inlet_temp,
+                            "fan_speeds": fan_speeds,
+                            "voltages": voltages,
+                            "power_consumption_w": round(power_consumption, 2),
+                            "bmc_temperature": round(random.uniform(40, 60), 1),
+                            "timestamp": datetime.utcnow().isoformat() + "Z"
+                        }
+                        
+                        topic = f"bmc/server/{server_id}/sensors"
+                        self.client.publish(topic, json.dumps(sensor_data))
+                        
+                time.sleep(15)
+            except Exception as e:
+                print(f"❌ Error in sensor simulation: {e}")
+                time.sleep(15)
+    
+    def _publish_server_status(self, server_id):
+        """Publish individual server power status"""
+        status = self.servers[server_id]
+        
+        power_data = {
+            "server_id": server_id,
+            "power_state": status["power_state"],
+            "boot_state": status["boot_state"],
+            "bmc_ip": self.bmc_info["bmc_ip"],
+            "last_change": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+        
+        topic = f"bmc/server/{server_id}/power"
+        self.client.publish(topic, json.dumps(power_data))
+    
+    def _publish_all_server_status(self):
+        """Publish status of all servers"""
+        for server_id in self.servers:
+            self._publish_server_status(server_id)
+    
+    def publish_bmc_status(self):
+        """Publish BMC system status"""
+        while self.running:
+            try:
+                # Get system metrics
+                cpu_percent = psutil.cpu_percent(interval=1)
+                memory = psutil.virtual_memory()
+                
+                self.bmc_status.update({
+                    "cpu_usage": round(cpu_percent, 1),
+                    "memory_usage": round(memory.percent, 1),
+                    "temperature": round(random.uniform(40, 65), 1),
+                    "uptime": int(time.time())
+                })
+                
+                # BMC status
+                bmc_status = {
+                    "bmc_info": self.bmc_info,
+                    "system_status": self.bmc_status,
+                    "managed_servers": len(self.servers),
+                    "servers_online": sum(1 for s in self.servers.values() if s["power_state"] == "on"),
+                    "energy_management": {
+                        "battery_soc": self.energy_data["battery_soc"],
+                        "auto_shutdown_enabled": True,
+                        "energy_aware": True
+                    },
+                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                }
+                
+                topic = "bmc/system/status"
+                self.client.publish(topic, json.dumps(bmc_status))
+                
+                print(f"📊 BMC Status: {self.bmc_status['cpu_usage']}% CPU, "
+                      f"{sum(1 for s in self.servers.values() if s['power_state'] == 'on')}/{len(self.servers)} servers online")
+                
+                time.sleep(30)
+            except Exception as e:
+                print(f"❌ Error publishing BMC status: {e}")
+                time.sleep(30)
+    
+    def run(self):
+        """Main BMC simulation loop"""
+        print("🖥️ Starting BMC Aspeed AST2600 Simulator...")
+        print(f"📡 BMC IP: {self.bmc_info['bmc_ip']}")
+        print(f"🔧 Firmware: {self.bmc_info['firmware_version']}")
+        print(f"🖥️ Managing {len(self.servers)} servers")
+        
+        try:
+            self.client.connect(MQTT_BROKER, MQTT_PORT, 60)
+            self.client.loop_start()
+        except Exception as e:
+            print(f"❌ Failed to connect to MQTT broker: {e}")
+            return
+        
+        time.sleep(2)
+        
+        # Start sensor simulation
+        threading.Thread(target=self.simulate_server_sensors, daemon=True).start()
+        threading.Thread(target=self.publish_bmc_status, daemon=True).start()
+        
+        # Publish initial status
+        self._publish_all_server_status()
+        
+        print("✅ BMC AST2600 Simulator ready - monitoring energy and managing servers")
+        
+        try:
+            while self.running:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n🛑 Shutting down BMC simulator...")
+            self.running = False
+        
+        self.client.loop_stop()
+        self.client.disconnect()
+        print("✅ BMC AST2600 Simulator stopped cleanly")
+
+if __name__ == "__main__":
+    simulator = AspeedAST2600Simulator()
+    simulator.run()

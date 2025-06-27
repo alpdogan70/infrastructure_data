@@ -1,0 +1,158 @@
+---
+# Configuration Telegraf pour IA énergétique
+# File: ansible/roles/energy_intelligence/tasks/configure_telegraf_ai.yml
+
+- name: "📡 Vérification que Telegraf est installé"
+  systemd:
+    name: telegraf
+    state: started
+  register: telegraf_status
+  ignore_errors: true
+
+- name: "⚠️ Telegraf non disponible - Configuration reportée"
+  debug:
+    msg: |
+      ⚠️ Telegraf n'est pas encore installé ou démarré.
+      La configuration Energy AI sera ajoutée lors du déploiement Telegraf.
+      
+      Pour activer Energy AI dans Telegraf:
+      1. Définir enable_energy_ai_topics: true dans les variables
+      2. Redéployer le rôle telegraf_dedicated
+  when: telegraf_status.failed
+
+- name: "📊 Configuration Energy AI disponible pour Telegraf"
+  debug:
+    msg: |
+      ✅ Templates Energy AI créés pour intégration Telegraf:
+      
+      📁 Templates disponibles:
+      - telegraf_energy_ai.conf.j2 (dans telegraf_dedicated)
+      - Configuration MQTT pour topics IA
+      - Outputs InfluxDB spécialisés
+      
+      🔧 Pour activer:
+      1. enable_energy_ai_topics: true
+      2. Redéployer telegraf_dedicated
+      
+      📡 Topics IA configurés:
+      {% for topic_name, topic_value in mqtt_ai.topics.items() %}
+      - {{ topic_name }}: {{ topic_value }}
+      {% endfor %}
+  when: not telegraf_status.failed
+
+- name: "📋 Variables Energy AI pour Telegraf"
+  set_fact:
+    energy_ai_telegraf_ready: true
+    energy_ai_mqtt_topics: "{{ mqtt_ai.topics }}"
+    energy_ai_version_info: "{{ energy_ai.version | default('1.0.0') }}"
+
+- name: "💡 Instructions intégration Telegraf"
+  debug:
+    msg: |
+      💡 INTÉGRATION TELEGRAF ENERGY AI
+      
+      Le rôle telegraf_dedicated contient déjà le template pour Energy AI.
+      
+      🔧 Configuration automatique:
+      ✅ Variables Energy AI définies
+      ✅ Templates prêts pour telegraf_dedicated
+      
+      📋 Prochaines étapes:
+      1. Le déploiement Telegraf utilisera automatiquement ces variables
+      2. Si enable_energy_ai_topics=true, les topics IA seront activés
+      3. Les buckets InfluxDB seront créés automatiquement
+      
+      🎯 Topics MQTT Energy AI:
+      {{ energy_ai_mqtt_topics | to_nice_json }}
+
+# ---
+# # Configuration Telegraf pour IA énergétique
+# # File: ansible/roles/energy_intelligence/tasks/configure_telegraf_ai.yml
+
+# - name: "📡 Déploiement configuration Telegraf IA"
+#   template:
+#     src: configs/energy_ai_telegraf.conf.j2
+#     dest: /etc/telegraf/telegraf.d/energy_ai.conf
+#     owner: telegraf
+#     group: telegraf
+#     mode: '0644'
+#     backup: yes
+#   notify: restart telegraf
+#   tags: ['telegraf_config']
+
+# - name: "🗄️ Configuration outputs InfluxDB IA"
+#   template:
+#     src: configs/energy_ai_outputs.conf.j2
+#     dest: /etc/telegraf/telegraf.d/energy_ai_outputs.conf
+#     owner: telegraf
+#     group: telegraf
+#     mode: '0644'
+#     backup: yes
+#   notify: restart telegraf
+#   tags: ['telegraf_outputs']
+
+# - name: "🔧 Extension configuration Telegraf existante"
+#   blockinfile:
+#     path: /etc/telegraf/telegraf.d/datacenter_energy.conf
+#     marker: "# {mark} ANSIBLE MANAGED BLOCK - AI INTEGRATION"
+#     block: |
+#       # ================== AI INTEGRATION ==================
+      
+#       # AI Predictions Input
+#       [[inputs.mqtt_consumer]]
+#         servers = ["tcp://{{ mqtt_broker_host }}:1883"]
+#         topics = [
+#           "{{ mqtt_ai.topics.predictions }}/+",
+#           "{{ mqtt_ai.topics.scenarios }}/+",
+#           "{{ mqtt_ai.topics.recommendations }}",
+#           "{{ mqtt_ai.topics.performance }}"
+#         ]
+#         topic_tag = "topic"
+#         qos = 1
+#         connection_timeout = "30s"
+#         username = "iot"
+#         password = "iot123"
+#         client_id = "telegraf-energy-ai"
+        
+#         data_format = "json"
+#         tag_keys = ["ai_model", "prediction_type", "scenario_name", "confidence_level"]
+#         json_time_key = "timestamp"
+#         json_time_format = "2006-01-02T15:04:05Z07:00"
+#         name_override = "energy_ai_data"
+        
+#         [inputs.mqtt_consumer.tags]
+#           source = "energy_ai"
+#           component = "predictions"
+#           version = "{{ energy_ai.version }}"
+#     backup: yes
+#   notify: restart telegraf
+#   tags: ['telegraf_integration']
+
+# - name: "📊 Configuration métriques performance IA"
+#   template:
+#     src: configs/ai_metrics.conf.j2
+#     dest: /etc/telegraf/telegraf.d/ai_metrics.conf
+#     owner: telegraf
+#     group: telegraf
+#     mode: '0644'
+#   notify: restart telegraf
+#   tags: ['ai_metrics']
+
+# - name: "🔍 Validation configuration Telegraf IA"
+#   command: telegraf --config /etc/telegraf/telegraf.d/energy_ai.conf --test
+#   register: telegraf_config_test
+#   failed_when: telegraf_config_test.rc != 0
+#   changed_when: false
+#   tags: ['validation']
+
+# - name: "📋 Résumé configuration Telegraf IA"
+#   debug:
+#     msg: |
+#       ✅ Configuration Telegraf IA déployée:
+#       📡 energy_ai.conf - Configuration principale
+#       🗄️ energy_ai_outputs.conf - Outputs InfluxDB
+#       📊 ai_metrics.conf - Métriques performance
+#       🔧 Extension datacenter_energy.conf - Intégration
+      
+#       📋 Validation: {{ 'RÉUSSIE' if telegraf_config_test.rc == 0 else 'ÉCHOUÉE' }}
+#       🔄 Topics MQTT IA configurés: {{ mqtt_ai.topics | length }}

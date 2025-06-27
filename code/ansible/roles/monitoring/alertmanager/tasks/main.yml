@@ -1,0 +1,82 @@
+---
+# tasks file for roles/alertmanager
+
+- name: check if alertmanager exists
+  stat:
+    path: /usr/local/bin/alertmanager
+  register: __alertmanager_exists
+  
+- name: if alertmanager exists get version
+  shell: "cat /etc/systemd/system/alertmanager.service | grep Version | sed s/'.*Version '//g"
+  register: __get_alertmanager_version
+  when: __alertmanager_exists.stat.exists == true
+  changed_when: false
+
+- name: create user alertmanager
+  user:
+    name: "{{ alertmanager_user }}"
+    system: yes
+    shell: /sbin/nologin
+    state: present
+
+- name: create directories for alertmanager configuration
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: 0750
+    recurse: true
+    owner: "{{ alertmanager_user }}"
+    group: "{{ alertmanager_user }}"
+  loop:
+    - "{{ alertmanager_dir_config }}"
+    - "{{ alertmanager_dir_data }}"
+
+- name: download alertmanager
+  unarchive: 
+    src: "https://github.com/prometheus/alertmanager/releases/download/v{{ alertmanager_version }}/alertmanager-{{ alertmanager_version }}.linux-amd64.tar.gz"
+    dest: /tmp/
+    remote_src: yes
+  when: __alertmanager_exists.stat.exists == false or not __get_alertmanager_version.stdout == alertmanager_version
+
+- name: move the binary to the final destination
+  copy:
+    src: "/tmp/alertmanager-{{ alertmanager_version }}.linux-amd64/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    mode: 0750
+    remote_src: yes
+    owner: "{{ alertmanager_user }}"
+    group: "{{ alertmanager_user }}"
+  loop:
+  - alertmanager
+  - amtool
+  when: __alertmanager_exists.stat.exists == False or not __get_alertmanager_version.stdout == alertmanager_version
+
+- name: clean
+  file:
+    path: "/tmp/alertmanager-{{ alertmanager_version }}.linux-amd64/"
+    state: absent
+  when: __alertmanager_exists.stat.exists == False or not __get_alertmanager_version.stdout == alertmanager_version
+
+- name: alertmanager systemd file
+  template:
+    src: "alertmanager.service.j2"
+    dest: "/etc/systemd/system/alertmanager.service"         
+    mode: 0750
+  notify: "restart_alertmanager"
+
+- name: alertmanager configuration file
+  template:
+    src: "alertmanager.yml.j2"
+    dest: "/etc/alertmanager/alertmanager.yml"      
+    mode: 0750
+    owner: "{{ alertmanager_user }}"
+    group: "{{ alertmanager_user }}"
+  notify: "restart_alertmanager"
+
+- meta: flush_handlers
+
+- name: start alertmanager
+  systemd:
+    name: alertmanager
+    state: started
+    enabled: yes

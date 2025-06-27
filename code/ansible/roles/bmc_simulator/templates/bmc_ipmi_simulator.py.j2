@@ -1,0 +1,397 @@
+#!/usr/bin/env python3
+"""
+BMC IPMI over LAN Simulator
+Simulates IPMI responses for ipmitool commands
+File: /ansible/roles/bmc_simulator/templates/bmc_ipmi_simulator.py.j2
+"""
+
+import socket
+import threading
+import json
+import struct
+import time
+import paho.mqtt.client as mqtt
+from datetime import datetime
+
+# Configuration
+MQTT_BROKER = "{{ mqtt_broker_host }}"
+MQTT_PORT = 1883
+MQTT_USERNAME = "iot"
+MQTT_PASSWORD = "iot123"
+IPMI_PORT = 623
+
+class IPMISimulator:
+    def __init__(self):
+        self.mqtt_client = mqtt.Client(client_id="bmc_ipmi_simulator")
+        self.mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+        self.mqtt_client.on_connect = self.on_connect
+        self.mqtt_client.on_message = self.on_message
+        
+        # Server status cache
+        self.servers_status = {}
+        self.bmc_info = {
+            "device_id": 0x20,
+            "device_revision": 0x01,
+            "fw_revision": 0x0215,  # 2.15
+            "ipmi_version": 0x02,
+            "manufacturer_id": 0x00001c4c,  # Aspeed
+            "product_id": 0x2600,  # AST2600
+            "guid": "12345678-1234-5678-9abc-123456789abc"
+        }
+        
+        # IPMI command handlers
+        self.command_handlers = {
+            0x06: {  # Application commands
+                0x01: self._get_device_id,
+                0x04: self._get_self_test_results,
+                0x37: self._get_device_guid,
+                0x38: self._get_channel_auth_capabilities,
+                0x39: self._get_session_challenge,
+                0x3a: self._activate_session,
+                0x3c: self._close_session
+            },
+            0x00: {  # Chassis commands
+                0x01: self._get_chassis_capabilities,
+                0x02: self._get_chassis_status,
+                0x04: self._chassis_control,
+                0x05: self._chassis_reset,
+                0x08: self._set_chassis_capabilities,
+                0x09: self._set_power_restore_policy
+            },
+            0x04: {  # Sensor/Event commands
+                0x20: self._get_device_sdr_info,
+                0x21: self._get_device_sdr,
+                0x22: self._reserve_device_sdr_repository,
+                0x23: self._get_sdr,
+                0x27: self._get_sensor_reading,
+                0x2d: self._get_sensor_reading_factors
+            }
+        }
+        
+    def on_connect(self, client, userdata, flags, rc):
+        if rc == 0:
+            print("📡 IPMI Simulator connected to MQTT")
+            client.subscribe("bmc/server/+/power")
+            client.subscribe("bmc/server/+/sensors")
+        else:
+            print(f"❌ IPMI Simulator failed to connect to MQTT: {rc}")
+    
+    def on_message(self, client, userdata, msg):
+        try:
+            topic = msg.topic
+            payload = json.loads(msg.payload.decode())
+            
+            if topic.startswith("bmc/server/") and topic.endswith("/power"):
+                server_id = topic.split("/")[2]
+                self.servers_status[server_id] = payload
+            elif topic.startswith("bmc/server/") and topic.endswith("/sensors"):
+                server_id = topic.split("/")[2]
+                if server_id not in self.servers_status:
+                    self.servers_status[server_id] = {}
+                self.servers_status[server_id].update(payload)
+                
+        except Exception as e:
+            print(f"❌ Error processing IPMI message: {e}")
+    
+    def start_ipmi_server(self):
+        """Start IPMI UDP server"""
+        try:
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.socket.bind(('0.0.0.0', IPMI_PORT))
+            
+            print(f"🔧 IPMI Simulator listening on port {IPMI_PORT}")
+            
+            while True:
+                try:
+                    data, addr = self.socket.recvfrom(1024)
+                    if len(data) >= 6:  # Minimum IPMI packet size
+                        # Process IPMI packet in background thread
+                        threading.Thread(
+                            target=self._handle_ipmi_request,
+                            args=(data, addr),
+                            daemon=True
+                        ).start()
+                except Exception as e:
+                    print(f"❌ Error receiving IPMI packet: {e}")
+                    
+        except Exception as e:
+            print(f"❌ Failed to start IPMI server: {e}")
+    
+    def _handle_ipmi_request(self, data, addr):
+        """Handle incoming IPMI request"""
+        try:
+            # Parse RMCP header (4 bytes)
+            if len(data) < 4:
+                return
+                
+            version, _, sequence, msg_class = struct.unpack('BBBB', data[:4])
+            
+            if msg_class != 0x07:  # IPMI message class
+                return
+                
+            # Parse IPMI session header
+            if len(data) < 16:
+                return
+                
+            auth_type, sequence_num, session_id = struct.unpack('>BII', data[4:13])
+            msg_len = struct.unpack('B', data[13:14])[0]
+            
+            if len(data) < 14 + msg_len:
+                return
+                
+            # Parse IPMI message
+            ipmi_data = data[14:14+msg_len]
+            if len(ipmi_data) < 6:
+                return
+                
+            rq_sa, netfn_lun, checksum1, rs_sa, rq_seq_lun, cmd = struct.unpack('BBBBBB', ipmi_data[:6])
+            
+            netfn = (netfn_lun >> 2) & 0x3f
+            rq_lun = netfn_lun & 0x03
+            rs_lun = (rq_seq_lun >> 2) & 0x03
+            rq_seq = (rq_seq_lun >> 4) & 0x3f
+            
+            # Get command data
+            cmd_data = ipmi_data[6:-1] if len(ipmi_data) > 7 else b''
+            
+            print(f"📨 IPMI Request from {addr[0]}: NetFn=0x{netfn:02x}, Cmd=0x{cmd:02x}")
+            
+            # Handle command
+            response_data = self._process_ipmi_command(netfn, cmd, cmd_data)
+            
+            # Send response
+            self._send_ipmi_response(addr, sequence, session_id, rq_sa, rs_sa, netfn | 0x01, rq_seq, cmd, response_data)
+            
+        except Exception as e:
+            print(f"❌ Error handling IPMI request: {e}")
+    
+    def _process_ipmi_command(self, netfn, cmd, data):
+        """Process IPMI command and return response data"""
+        try:
+            if netfn in self.command_handlers and cmd in self.command_handlers[netfn]:
+                return self.command_handlers[netfn][cmd](data)
+            else:
+                print(f"⚠️ Unsupported IPMI command: NetFn=0x{netfn:02x}, Cmd=0x{cmd:02x}")
+                return struct.pack('B', 0xc1)  # Invalid command
+        except Exception as e:
+            print(f"❌ Error processing command: {e}")
+            return struct.pack('B', 0xff)  # Unspecified error
+    
+    def _send_ipmi_response(self, addr, sequence, session_id, rq_sa, rs_sa, netfn, rq_seq, cmd, response_data):
+        """Send IPMI response packet"""
+        try:
+            # RMCP header
+            rmcp_header = struct.pack('BBBB', 0x06, 0x00, 0xff, 0x07)
+            
+            # IPMI session header
+            auth_type = 0x00  # No authentication
+            session_header = struct.pack('>BII', auth_type, 0, session_id)
+            
+            # IPMI message
+            completion_code = response_data[0:1] if response_data else struct.pack('B', 0x00)
+            ipmi_response_data = response_data[1:] if len(response_data) > 1 else b''
+            
+            # Build IPMI message
+            ipmi_msg = struct.pack('BBBBBB', 
+                                   rs_sa,           # Response SA
+                                   netfn << 2,      # NetFn/LUN
+                                   0,               # Checksum (calculated later)
+                                   rq_sa,           # Request SA  
+                                   (rq_seq << 4),   # Seq/LUN
+                                   cmd)             # Command
+            ipmi_msg += completion_code + ipmi_response_data
+            
+            # Calculate checksums
+            checksum1 = (0x100 - sum(ipmi_msg[0:2])) & 0xff
+            ipmi_msg = ipmi_msg[:2] + struct.pack('B', checksum1) + ipmi_msg[3:]
+            
+            checksum2 = (0x100 - sum(ipmi_msg[3:])) & 0xff
+            ipmi_msg += struct.pack('B', checksum2)
+            
+            # Message length
+            msg_len = struct.pack('B', len(ipmi_msg))
+            
+            # Complete packet
+            packet = rmcp_header + session_header + msg_len + ipmi_msg
+            
+            self.socket.sendto(packet, addr)
+            print(f"📤 IPMI Response sent to {addr[0]}: Cmd=0x{cmd:02x}, CC=0x{completion_code[0]:02x}")
+            
+        except Exception as e:
+            print(f"❌ Error sending IPMI response: {e}")
+    
+    # IPMI Command Handlers
+    def _get_device_id(self, data):
+        """Get Device ID command (0x01)"""
+        response = struct.pack('BBBBBIHHBBBB',
+                               0x00,  # Completion code
+                               self.bmc_info["device_id"],
+                               self.bmc_info["device_revision"] | 0x80,  # Device available
+                               self.bmc_info["fw_revision"] & 0xff,
+                               (self.bmc_info["fw_revision"] >> 8) & 0xff,
+                               self.bmc_info["ipmi_version"],
+                               self.bmc_info["manufacturer_id"] & 0xffffff,
+                               self.bmc_info["product_id"],
+                               0x00, 0x00, 0x00, 0x00)  # Aux firmware revision
+        return response
+    
+    def _get_self_test_results(self, data):
+        """Get Self Test Results command (0x04)"""
+        return struct.pack('BBB', 0x00, 0x55, 0x00)  # Self test passed
+    
+    def _get_device_guid(self, data):
+        """Get Device GUID command (0x37)"""
+        # Convert GUID string to bytes
+        guid_bytes = bytes.fromhex(self.bmc_info["guid"].replace('-', ''))
+        return struct.pack('B', 0x00) + guid_bytes
+    
+    def _get_channel_auth_capabilities(self, data):
+        """Get Channel Authentication Capabilities (0x38)"""
+        return struct.pack('BBBB', 0x00, 0x01, 0x02, 0x01)  # Basic capabilities
+    
+    def _get_session_challenge(self, data):
+        """Get Session Challenge (0x39)"""
+        # Return dummy challenge
+        challenge = b'\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10'
+        return struct.pack('BI', 0x00, 0x12345678) + challenge
+    
+    def _activate_session(self, data):
+        """Activate Session (0x3a)"""
+        return struct.pack('BIBI', 0x00, 0x01, 0x12345678, 0x04)  # Session activated
+    
+    def _close_session(self, data):
+        """Close Session (0x3c)"""
+        return struct.pack('B', 0x00)  # Session closed
+    
+    def _get_chassis_capabilities(self, data):
+        """Get Chassis Capabilities (0x01)"""
+        return struct.pack('BBBBBB', 0x00, 0x0f, 0x01, 0x01, 0x01, 0x01)
+    
+    def _get_chassis_status(self, data):
+        """Get Chassis Status (0x02)"""
+        # Check if any server is running
+        power_on = any(server.get('power_state') == 'on' for server in self.servers_status.values())
+        
+        current_power_state = 0x01 if power_on else 0x00
+        last_power_event = 0x00
+        misc_chassis_state = 0x40  # Chassis identify supported
+        front_panel_button = 0x00
+        
+        return struct.pack('BBBBB', 0x00, current_power_state, last_power_event, 
+                          misc_chassis_state, front_panel_button)
+    
+    def _chassis_control(self, data):
+        """Chassis Control (0x02)"""
+        if len(data) < 1:
+            return struct.pack('B', 0xcc)  # Invalid data length
+            
+        control = data[0]
+        
+        # Send MQTT command based on chassis control
+        if control == 0x00:  # Power down
+            command = {"action": "power_off", "force": False}
+            topic = "bmc/datacenter/command"
+            action = "shutdown_all"
+        elif control == 0x01:  # Power up
+            command = {"action": "power_on"}
+            topic = "bmc/datacenter/command" 
+            action = "start_all"
+        elif control == 0x02:  # Power cycle
+            command = {"action": "reset"}
+            topic = "bmc/datacenter/command"
+            action = "reset_all"
+        elif control == 0x03:  # Hard reset
+            command = {"action": "reset", "force": True}
+            topic = "bmc/datacenter/command"
+            action = "reset_all"
+        else:
+            return struct.pack('B', 0xcc)  # Invalid command
+        
+        # Send command via MQTT
+        command["action"] = action
+        command["timestamp"] = datetime.utcnow().isoformat() + "Z"
+        self.mqtt_client.publish(topic, json.dumps(command))
+        
+        print(f"🔧 Chassis control: {['Power Down', 'Power Up', 'Power Cycle', 'Hard Reset'][control]} via IPMI")
+        
+        return struct.pack('B', 0x00)  # Success
+    
+    def _chassis_reset(self, data):
+        """Chassis Reset (0x05)"""
+        # Send reset command to all servers
+        command = {"action": "reset_all", "timestamp": datetime.utcnow().isoformat() + "Z"}
+        self.mqtt_client.publish("bmc/datacenter/command", json.dumps(command))
+        return struct.pack('B', 0x00)
+    
+    def _set_chassis_capabilities(self, data):
+        """Set Chassis Capabilities (0x08)"""
+        return struct.pack('B', 0x00)  # Success
+    
+    def _set_power_restore_policy(self, data):
+        """Set Power Restore Policy (0x09)"""
+        return struct.pack('B', 0x00)  # Success
+    
+    def _get_device_sdr_info(self, data):
+        """Get Device SDR Info (0x20)"""
+        return struct.pack('BBBBIHH', 0x00, 0x51, 0x01, 0x00, 0x20, 0x1234, 0x5678)
+    
+    def _get_device_sdr(self, data):
+        """Get Device SDR (0x21)"""
+        return struct.pack('B', 0x00) + b'\x00' * 16  # Dummy SDR
+    
+    def _reserve_device_sdr_repository(self, data):
+        """Reserve Device SDR Repository (0x22)"""
+        return struct.pack('BH', 0x00, 0x1234)  # Reservation ID
+    
+    def _get_sdr(self, data):
+        """Get SDR (0x23)"""
+        return struct.pack('B', 0x00) + b'\x00' * 32  # Dummy SDR record
+    
+    def _get_sensor_reading(self, data):
+        """Get Sensor Reading (0x27)"""
+        if len(data) < 1:
+            return struct.pack('B', 0xcc)
+            
+        sensor_number = data[0]
+        
+        # Return dummy sensor reading
+        reading = 0x80  # Valid reading
+        sensor_value = 0x40  # Middle range
+        event_status = 0x00  # No events
+        
+        return struct.pack('BBBB', 0x00, reading, sensor_value, event_status)
+    
+    def _get_sensor_reading_factors(self, data):
+        """Get Sensor Reading Factors (0x2d)"""
+        return struct.pack('BBBBhBB', 0x00, 0x00, 0x00, 0x00, 0x0001, 0x00, 0x00)
+    
+    def run(self):
+        """Main IPMI simulator loop"""
+        print("🔧 Starting BMC IPMI Simulator...")
+        
+        # Connect to MQTT
+        try:
+            self.mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+            self.mqtt_client.loop_start()
+            time.sleep(2)
+        except Exception as e:
+            print(f"❌ Failed to connect to MQTT: {e}")
+            return
+        
+        # Start IPMI server
+        try:
+            self.start_ipmi_server()
+        except KeyboardInterrupt:
+            print("\n🛑 Shutting down IPMI simulator...")
+        except Exception as e:
+            print(f"❌ IPMI server error: {e}")
+        finally:
+            self.mqtt_client.loop_stop()
+            self.mqtt_client.disconnect()
+            if hasattr(self, 'socket'):
+                self.socket.close()
+
+if __name__ == "__main__":
+    simulator = IPMISimulator()
+    simulator.run()

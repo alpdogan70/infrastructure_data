@@ -1,0 +1,7 @@
+influxdb_admin_user: admin
+influxdb_admin_password: mySecret
+influxdb_org: iot
+influxdb_bucket: sensors
+influxdb_retention: 30d
+influxdb_retention_seconds: 2592000  # 30 days in seconds
+influxdb_token_path: "/etc/influxdb2/admin-token"

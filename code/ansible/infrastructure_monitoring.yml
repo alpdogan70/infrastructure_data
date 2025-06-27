@@ -1,0 +1,106 @@
+- name: monitoring
+  become: yes
+  hosts: meta-app_monitoring
+  roles:
+    - volumes
+    - monitoring/vmtools
+    - monitoring/vmetrics
+    - monitoring/alertmanager
+    - monitoring/karma
+    - monitoring/grafana
+    - consul/consul_services
+    - monitoring/consul_exporter
+  vars:
+    vmagent_dir_disk_data: "/data_vmetrics"
+    vmetrics_dir_disk_data: "/data_vmetrics"
+    vmalert_remote: vmetrics.service.staner.consul
+    vmalert_grafana: grafana.service.staner.consul
+    grafana_admin_password: "{{ vault_grafana_admin_password }}"
+    karma_alertmanager_uri: "http://alertmanager.service.staner.consul:9093"
+    grafana_prometheus_address: "vmetrics.service.consul:8428"
+    grafana_datasources:
+      - {name: "VictoriaMetrics", type: "prometheus", address: "vmetrics.service.consul:8428"}
+      - {name: "Loki", type: "loki", address: "loki.service.consul:3100"} 
+
+    grafana_dashboards:
+      - { label: "node-exporter", json: "https://raw.githubusercontent.com/rfrail3/grafana-dashboards/master/prometheus/node-exporter-full.json", mode: "web" }
+      - { label: "backups", json: "backups.json", mode: "local" }
+      - { label: "traefik", json: "traefik.json", mode: "local" }
+      - { label: "errorlog", json: "errorlog.json", mode: "local" }
+      - { label: "consul", json: "consul.json", mode: "local" }
+
+    volumes_disks:
+      - { disk: '/dev/sdb', path: '{{ vmagent_dir_disk_data }}' }
+    consul_services:
+      - {
+        name: "consul_exporter",
+        type: "http",
+        check_target: "http://127.0.0.1:9107",
+        interval: "20s",
+        port: 9107
+        }
+      - {
+        name: "vmagent",
+        type: "http",
+        check_target: "http://127.0.0.1:8429",
+        interval: "20s",
+        port: 8429
+        }
+      - {
+        name: "vmetrics",
+        type: "http",
+        check_target: "http://127.0.0.1:8428",
+        interval: "20s",
+        port: 8428,
+        tags: [
+            "traefik.enable=true",
+            "traefik.http.routers.router-vmetrics.entrypoints=http,https",
+            "traefik.http.routers.router-vmetrics.rule=Host(`v.tanerinfo.eu`)",
+            "traefik.http.routers.router-vmetrics.service=vmetrics",
+            "traefik.http.routers.router-vmetrics.middlewares=auth@file,to_https@file",
+            "traefik.http.routers.router-vmetrics.tls.certresolver=certs_gen"
+          ]
+        }
+      - {
+        name: "vmalert",
+        type: "http",
+        check_target: "http://127.0.0.1:8880",
+        interval: "20s",
+        port: 8880
+        }
+      - {
+        name: "alertmanager",
+        type: "http",
+        check_target: "http://127.0.0.1:9093",
+        interval: "20s",
+        port: 9093
+        }
+      - { 
+        name: "karma", 
+        type: "http", 
+        check_target: "http://127.0.0.1:8080", 
+        interval: "10s", 
+        port: 8080
+        }
+      - { 
+        name: "grafana", 
+        type: "http", 
+        check_target: "http://127.0.0.1:3000", 
+        interval: "10s", 
+        port: 3000,
+        tags: [
+            "traefik.enable=true",
+            "traefik.http.routers.router-grafana.entrypoints=http,https",
+            "traefik.http.routers.router-grafana.rule=Host(`g.tanerinfo.eu`)",
+            "traefik.http.routers.router-grafana.service=grafana",
+            "traefik.http.routers.router-grafana.middlewares=auth@file,to_https@file,secure_headers@file", 
+            "traefik.http.routers.router-grafana.tls.certresolver=certs_gen"
+          ]
+        }
+    vault_grafana_admin_password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          30306537386338643066336234666632623639313537643730393132613738306132383238646637
+          6436326262326338656163656236633638303061643861630a346239376335656133613265383731
+          62336132323761656365353738353464343064643631636265313434313961343164343736353266
+          6338343637643862610a656461643933653032333034656632623437373531623232636633336234
+          3436

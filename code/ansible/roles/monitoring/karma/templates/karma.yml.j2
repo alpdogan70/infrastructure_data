@@ -1,0 +1,7 @@
+alertmanager:
+  interval: 10s
+  servers:
+    - name: standard
+      uri: {{ karma_alertmanager_uri }}
+      timeout: 20s
+      proxy: false

@@ -1,0 +1,22 @@
+# File: bmc-energy-integration.service.j2
+[Unit]
+Description=BMC Energy Integration and Management
+After=network.target bmc-core-simulator.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bmc-simulator
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/opt/bmc-simulator/venv/bin/python /opt/bmc-simulator/bmc_energy_integration.py
+Restart=always
+RestartSec=20
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+MemoryMax=256M
+CPUQuota=25%
+
+[Install]
+WantedBy=multi-user.target

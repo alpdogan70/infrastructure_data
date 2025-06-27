@@ -1,0 +1,63 @@
+groups:
+- name: consul
+  rules:
+  - alert: ConsulNodeFail
+    annotations:
+      summary: Consul node check failed
+      description: Consul node check failed {{ $labels.node }}
+    expr: sum by(node) (consul_health_node_status{check!="_node_maintenance",status!="passing"}) > 0
+    for: 10m
+    labels:
+      severity: critical
+  - alert: ConsulServiceFailed
+    annotations:
+      summary: Consul service failed
+      description: All instances of service {{ $labels.service_name }} failed
+    expr: |-
+      sum by(service_name,dc) (
+        ((sum by(service_name, node, dc) (consul_health_service_status{check!~"_service_maintenance.*",status!="passing"})
+        - (sum by(service_name, node, dc) (consul_service_checks)
+        - sum by(service_name, node, dc) (consul_health_service_status{check!~"_service_maintenance.*"})))
+        - on(node) group_left() 
+          sum by(node) (sum by(node) (consul_health_node_status) 
+        - sum by(node) (consul_health_node_status{check!~"_node_maintenance"}))))
+        / sum by(service_name,dc) (consul_health_service_status{check!~"_service_maintenance.*"}) 
+      >= 1
+    for: 10m
+    labels:
+      severity: critical
+  - alert: ConsulServiceDegraded
+    annotations:
+      summary: Consul Service degraded
+      description: Some instances of service {{ $labels.service_name }} failed
+    expr: |-
+      sum by(service_name,dc) (
+        ((sum by(service_name, node, dc) (consul_health_service_status{check!~"_service_maintenance.*",status!="passing", service_name!~"postgresql_.*"})
+        - (sum by(service_name, node, dc) (consul_service_checks)
+        - sum by(service_name, node, dc) (consul_health_service_status{check!~"_service_maintenance.*", service_name!~"postgresql_.*"})))
+        - on(node) group_left() 
+          sum by(node) (sum by(node) (consul_health_node_status) 
+        - sum by(node) (consul_health_node_status{check!~"_node_maintenance", service_name!~"postgresql_.*"}))))
+        / sum by(service_name,dc) (consul_health_service_status{check!~"_service_maintenance.*", service_name!~"postgresql_.*"}) 
+      > 0 < 1
+    for: 10m
+    labels:
+      severity: warning
+  - alert: ConsulLeaderDown
+    annotations:
+      summary: Consul Leader down - no leader
+      description: No consul leader on {{ $labels.dc }}
+    expr: |-
+      consul_raft_leader == 0
+    for: 10m
+    labels:
+      severity: critical
+  - alert: ConsulClusterUnstable
+    annotations:
+      summary: Consul Cluster with even number of masters
+      description: Consul Cluster with even number of masters on {{ $labels.dc }}
+    expr: |-
+      consul_raft_peers % 2 != 1
+    for: 10m
+    labels:
+      severity: warning

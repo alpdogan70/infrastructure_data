@@ -1,0 +1,473 @@
+#!/usr/bin/env python3
+"""
+BMC Energy Integration
+Intelligent power management based on solar/battery conditions
+File: /ansible/roles/bmc_simulator/templates/bmc_energy_integration.py.j2
+"""
+
+import json
+import time
+import paho.mqtt.client as mqtt
+from datetime import datetime, timedelta
+import logging
+
+# Configuration
+MQTT_BROKER = "{{ mqtt_broker_host }}"
+MQTT_PORT = 1883
+MQTT_USERNAME = "iot"
+MQTT_PASSWORD = "iot123"
+
+# Energy thresholds
+CRITICAL_BATTERY_THRESHOLD = 20.0    # Emergency shutdown all non-critical
+LOW_BATTERY_THRESHOLD = 35.0         # Graceful partial shutdown
+GOOD_BATTERY_THRESHOLD = 70.0        # Can start more servers
+HIGH_SOLAR_THRESHOLD = 3000.0        # Watts - good solar production
+STARTUP_DELAY_MINUTES = 10           # Wait between server startups
+
+# Server priorities (higher = more critical)
+SERVER_PRIORITIES = {
+    "server_01": 10,  # Critical infrastructure
+    "server_02": 10,  # Critical infrastructure  
+    "server_03": 8,   # Important services
+    "server_04": 8,   # Important services
+    "server_05": 6,   # Standard workload
+    "server_06": 6,   # Standard workload
+    "server_07": 4,   # Development/test
+    "server_08": 4,   # Development/test
+    "server_09": 2,   # Optional services
+    "server_10": 2,   # Optional services
+    "server_11": 1,   # Lowest priority
+    "server_12": 1    # Lowest priority
+}
+
+class BMCEnergyManager:
+    def __init__(self):
+        self.client = mqtt.Client(client_id="bmc_energy_manager")
+        self.client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+        self.client.on_connect = self.on_connect
+        self.client.on_message = self.on_message
+        
+        # Energy state
+        self.battery_soc = 100.0
+        self.solar_production = 0.0
+        self.total_consumption = 0.0
+        self.grid_power = 0.0
+        
+        # Server states
+        self.servers = {}
+        
+        # Management state
+        self.last_shutdown_time = {}
+        self.last_startup_time = {}
+        self.emergency_mode = False
+        self.last_action_time = datetime.now()
+        
+        # Setup logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler('/opt/bmc-simulator/logs/energy_manager.log'),
+                logging.StreamHandler()
+            ]
+        )
+        self.logger = logging.getLogger(__name__)
+        
+    def on_connect(self, client, userdata, flags, rc):
+        if rc == 0:
+            self.logger.info("🔋 BMC Energy Manager connected to MQTT")
+            # Subscribe to energy data
+            client.subscribe("energy/battery/datacenter/status")
+            client.subscribe("energy/solar/datacenter/production")
+            client.subscribe("energy/consumption/datacenter/metrics")
+            client.subscribe("energy/grid/datacenter/status")
+            client.subscribe("bmc/server/+/power")
+        else:
+            self.logger.error(f"❌ Failed to connect to MQTT: {rc}")
+    
+    def on_message(self, client, userdata, msg):
+        try:
+            topic = msg.topic
+            payload = json.loads(msg.payload.decode())
+            
+            if topic == "energy/battery/datacenter/status":
+                old_soc = self.battery_soc
+                self.battery_soc = payload.get("charge_level", 0)
+                
+                # Check for significant battery changes
+                if abs(old_soc - self.battery_soc) > 5:
+                    self.logger.info(f"🔋 Battery SOC changed: {old_soc:.1f}% → {self.battery_soc:.1f}%")
+                
+                self._evaluate_energy_situation()
+                
+            elif topic == "energy/solar/datacenter/production":
+                self.solar_production = payload.get("production_w", 0)
+                
+            elif topic == "energy/consumption/datacenter/metrics":
+                self.total_consumption = payload.get("total_consumption_w", 0)
+                
+            elif topic == "energy/grid/datacenter/status":
+                self.grid_power = payload.get("grid_power", 0)
+                
+            elif topic.startswith("bmc/server/") and topic.endswith("/power"):
+                server_id = topic.split("/")[2]
+                self.servers[server_id] = payload
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error processing message: {e}")
+    
+    def _evaluate_energy_situation(self):
+        """Evaluate current energy situation and take action if needed"""
+        try:
+            # Don't act too frequently
+            if (datetime.now() - self.last_action_time).seconds < 30:
+                return
+            
+            current_time = datetime.now()
+            
+            # Critical battery level - emergency shutdown
+            if self.battery_soc <= CRITICAL_BATTERY_THRESHOLD:
+                if not self.emergency_mode:
+                    self.logger.warning(f"🚨 CRITICAL BATTERY: {self.battery_soc:.1f}% - Emergency shutdown initiated")
+                    self.emergency_mode = True
+                    self._emergency_shutdown()
+                    
+            # Low battery level - graceful partial shutdown
+            elif self.battery_soc <= LOW_BATTERY_THRESHOLD:
+                if self.emergency_mode:
+                    self.emergency_mode = False
+                    self.logger.info("🔄 Exiting emergency mode")
+                
+                self._graceful_partial_shutdown()
+                
+            # Good conditions - can start more servers
+            elif (self.battery_soc >= GOOD_BATTERY_THRESHOLD and 
+                  self.solar_production >= HIGH_SOLAR_THRESHOLD):
+                  
+                if self.emergency_mode:
+                    self.emergency_mode = False
+                    self.logger.info("✅ Exiting emergency mode - good energy conditions")
+                
+                self._smart_startup()
+            
+            # Normal conditions - maintain current state
+            else:
+                if self.emergency_mode:
+                    self.emergency_mode = False
+                    self.logger.info("🔄 Exiting emergency mode - normal conditions")
+            
+            self.last_action_time = current_time
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error evaluating energy situation: {e}")
+    
+    def _emergency_shutdown(self):
+        """Emergency shutdown of all non-critical servers"""
+        critical_servers = [server for server, priority in SERVER_PRIORITIES.items() if priority >= 8]
+        
+        running_servers = [
+            server_id for server_id, status in self.servers.items() 
+            if status.get('power_state') == 'on' and server_id not in critical_servers
+        ]
+        
+        if running_servers:
+            self.logger.warning(f"🚨 Emergency shutdown: {len(running_servers)} servers")
+            
+            for server_id in running_servers:
+                self._shutdown_server(server_id, emergency=True)
+                time.sleep(2)  # Brief delay between shutdowns
+    
+    def _graceful_partial_shutdown(self):
+        """Graceful shutdown of lower priority servers"""
+        # Get running servers sorted by priority (lowest first)
+        running_servers = [
+            (server_id, SERVER_PRIORITIES.get(server_id, 5))
+            for server_id, status in self.servers.items() 
+            if status.get('power_state') == 'on'
+        ]
+        
+        running_servers.sort(key=lambda x: x[1])  # Sort by priority
+        
+        # Calculate how many to shutdown (aim for 50% reduction)
+        target_shutdown = max(1, len(running_servers) // 2)
+        
+        # Only shutdown low priority servers (priority < 6)
+        servers_to_shutdown = [
+            server_id for server_id, priority in running_servers[:target_shutdown]
+            if priority < 6
+        ]
+        
+        if servers_to_shutdown:
+            self.logger.info(f"⚠️ Low battery graceful shutdown: {len(servers_to_shutdown)} servers")
+            
+            for server_id in servers_to_shutdown:
+                # Check if we haven't shutdown this server recently
+                last_shutdown = self.last_shutdown_time.get(server_id)
+                if not last_shutdown or (datetime.now() - last_shutdown).seconds > 300:
+                    self._shutdown_server(server_id, emergency=False)
+                    time.sleep(5)  # Graceful delay
+    
+    def _smart_startup(self):
+        """Smart startup of servers based on energy availability"""
+        # Get servers that are currently off
+        offline_servers = [
+            (server_id, SERVER_PRIORITIES.get(server_id, 5))
+            for server_id, status in self.servers.items() 
+            if status.get('power_state') == 'off'
+        ]
+        
+        if not offline_servers:
+            return  # All servers already running
+        
+        # Sort by priority (highest first for startup)
+        offline_servers.sort(key=lambda x: x[1], reverse=True)
+        
+        # Calculate energy surplus
+        energy_surplus = self.solar_production - self.total_consumption
+        
+        # Only start servers if we have significant surplus
+        if energy_surplus > 1000:  # 1kW surplus minimum
+            # Estimate how many servers we can start (assume 400W per server)
+            estimated_servers = min(3, int(energy_surplus / 400))
+            
+            servers_to_start = offline_servers[:estimated_servers]
+            
+            for server_id, priority in servers_to_start:
+                # Check if we haven't started this server recently
+                last_startup = self.last_startup_time.get(server_id)
+                if not last_startup or (datetime.now() - last_startup).minutes > STARTUP_DELAY_MINUTES:
+                    self.logger.info(f"🚀 Starting server {server_id} (priority {priority}) - energy surplus {energy_surplus:.0f}W")
+                    self._startup_server(server_id)
+                    time.sleep(10)  # Delay between startups
+                    break  # Start one at a time
+    
+    def _shutdown_server(self, server_id, emergency=False):
+        """Shutdown a specific server"""
+        try:
+            shutdown_type = "EMERGENCY" if emergency else "GRACEFUL"
+            
+            command = {
+                "action": "power_off",
+                "force": emergency,
+                "reason": "energy_management",
+                "shutdown_type": shutdown_type,
+                "battery_soc": self.battery_soc,
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+            
+            topic = f"bmc/server/{server_id}/command"
+            self.client.publish(topic, json.dumps(command))
+            
+            self.last_shutdown_time[server_id] = datetime.now()
+            
+            self.logger.info(f"🔴 Shutdown {server_id} ({shutdown_type}) - Battery: {self.battery_soc:.1f}%")
+            
+            # Publish energy management event
+            self._publish_energy_event("server_shutdown", {
+                "server_id": server_id,
+                "shutdown_type": shutdown_type,
+                "battery_soc": self.battery_soc,
+                "reason": "Low battery protection"
+            })
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error shutting down {server_id}: {e}")
+    
+    def _startup_server(self, server_id):
+        """Start up a specific server"""
+        try:
+            command = {
+                "action": "power_on",
+                "reason": "energy_management",
+                "solar_production": self.solar_production,
+                "battery_soc": self.battery_soc,
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+            
+            topic = f"bmc/server/{server_id}/command"
+            self.client.publish(topic, json.dumps(command))
+            
+            self.last_startup_time[server_id] = datetime.now()
+            
+            self.logger.info(f"🟢 Startup {server_id} - Solar: {self.solar_production:.0f}W, Battery: {self.battery_soc:.1f}%")
+            
+            # Publish energy management event
+            self._publish_energy_event("server_startup", {
+                "server_id": server_id,
+                "solar_production": self.solar_production,
+                "battery_soc": self.battery_soc,
+                "reason": "Good energy conditions"
+            })
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error starting {server_id}: {e}")
+    
+    def _publish_energy_event(self, event_type, data):
+        """Publish energy management events"""
+        try:
+            event = {
+                "event_type": event_type,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "battery_soc": self.battery_soc,
+                "solar_production": self.solar_production,
+                "total_consumption": self.total_consumption,
+                "emergency_mode": self.emergency_mode,
+                "data": data
+            }
+            
+            self.client.publish("bmc/datacenter/energy/events", json.dumps(event))
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error publishing energy event: {e}")
+    
+    def publish_energy_status(self):
+        """Publish periodic energy management status"""
+        try:
+            # Count servers by state
+            servers_on = sum(1 for s in self.servers.values() if s.get('power_state') == 'on')
+            servers_off = sum(1 for s in self.servers.values() if s.get('power_state') == 'off')
+            
+            # Calculate energy efficiency
+            if self.total_consumption > 0:
+                energy_efficiency = (self.solar_production / self.total_consumption) * 100
+            else:
+                energy_efficiency = 0
+            
+            # Determine current strategy
+            if self.battery_soc <= CRITICAL_BATTERY_THRESHOLD:
+                strategy = "emergency_conservation"
+            elif self.battery_soc <= LOW_BATTERY_THRESHOLD:
+                strategy = "power_saving"
+            elif self.battery_soc >= GOOD_BATTERY_THRESHOLD and self.solar_production >= HIGH_SOLAR_THRESHOLD:
+                strategy = "optimal_utilization"
+            else:
+                strategy = "normal_operation"
+            
+            status = {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "energy_management": {
+                    "strategy": strategy,
+                    "emergency_mode": self.emergency_mode,
+                    "battery_soc": self.battery_soc,
+                    "solar_production_w": self.solar_production,
+                    "total_consumption_w": self.total_consumption,
+                    "grid_power_w": self.grid_power,
+                    "energy_efficiency_pct": round(energy_efficiency, 1)
+                },
+                "server_status": {
+                    "total_servers": len(self.servers),
+                    "servers_online": servers_on,
+                    "servers_offline": servers_off,
+                    "utilization_pct": round((servers_on / len(self.servers)) * 100, 1) if self.servers else 0
+                },
+                "thresholds": {
+                    "critical_battery": CRITICAL_BATTERY_THRESHOLD,
+                    "low_battery": LOW_BATTERY_THRESHOLD,
+                    "good_battery": GOOD_BATTERY_THRESHOLD,
+                    "high_solar": HIGH_SOLAR_THRESHOLD
+                },
+                "recommendations": self._generate_recommendations()
+            }
+            
+            self.client.publish("bmc/datacenter/energy/status", json.dumps(status))
+            
+            self.logger.info(f"📊 Energy Status: {strategy}, Battery: {self.battery_soc:.1f}%, "
+                           f"Servers: {servers_on}/{len(self.servers)}, "
+                           f"Solar: {self.solar_production:.0f}W")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error publishing energy status: {e}")
+    
+    def _generate_recommendations(self):
+        """Generate intelligent recommendations based on current conditions"""
+        recommendations = []
+        
+        # Battery recommendations
+        if self.battery_soc < CRITICAL_BATTERY_THRESHOLD:
+            recommendations.append({
+                "priority": "critical",
+                "type": "battery",
+                "message": f"Critical battery level ({self.battery_soc:.1f}%) - Consider immediate load reduction"
+            })
+        elif self.battery_soc < LOW_BATTERY_THRESHOLD:
+            recommendations.append({
+                "priority": "warning", 
+                "type": "battery",
+                "message": f"Low battery level ({self.battery_soc:.1f}%) - Reduce non-essential workloads"
+            })
+        
+        # Solar recommendations
+        if self.solar_production > HIGH_SOLAR_THRESHOLD and self.battery_soc > GOOD_BATTERY_THRESHOLD:
+            recommendations.append({
+                "priority": "info",
+                "type": "solar",
+                "message": f"Excellent solar conditions ({self.solar_production:.0f}W) - Good time for energy-intensive tasks"
+            })
+        elif self.solar_production < 1000 and datetime.now().hour >= 10 and datetime.now().hour <= 16:
+            recommendations.append({
+                "priority": "warning",
+                "type": "solar", 
+                "message": f"Low solar production ({self.solar_production:.0f}W) during peak hours - Check panel conditions"
+            })
+        
+        # Efficiency recommendations
+        if self.total_consumption > 0:
+            efficiency = (self.solar_production / self.total_consumption) * 100
+            if efficiency < 50:
+                recommendations.append({
+                    "priority": "info",
+                    "type": "efficiency",
+                    "message": f"Energy efficiency is {efficiency:.1f}% - Consider load balancing"
+                })
+        
+        # Grid recommendations
+        if abs(self.grid_power) > 2000:
+            if self.grid_power > 0:
+                recommendations.append({
+                    "priority": "warning",
+                    "type": "grid",
+                    "message": f"High grid import ({self.grid_power:.0f}W) - Consider reducing consumption"
+                })
+            else:
+                recommendations.append({
+                    "priority": "info",
+                    "type": "grid", 
+                    "message": f"Exporting {abs(self.grid_power):.0f}W to grid - Good energy production"
+                })
+        
+        return recommendations
+    
+    def run(self):
+        """Main energy management loop"""
+        self.logger.info("🔋 Starting BMC Energy Management System...")
+        self.logger.info(f"🎯 Thresholds: Critical={CRITICAL_BATTERY_THRESHOLD}%, "
+                        f"Low={LOW_BATTERY_THRESHOLD}%, Good={GOOD_BATTERY_THRESHOLD}%")
+        
+        try:
+            self.client.connect(MQTT_BROKER, MQTT_PORT, 60)
+            self.client.loop_start()
+            time.sleep(2)
+        except Exception as e:
+            self.logger.error(f"❌ Failed to connect to MQTT: {e}")
+            return
+        
+        self.logger.info("✅ BMC Energy Manager connected and monitoring...")
+        
+        try:
+            while True:
+                # Publish status every 60 seconds
+                self.publish_energy_status()
+                time.sleep(60)
+                
+        except KeyboardInterrupt:
+            self.logger.info("\n🛑 Shutting down BMC Energy Manager...")
+        except Exception as e:
+            self.logger.error(f"❌ Energy manager error: {e}")
+        finally:
+            self.client.loop_stop()
+            self.client.disconnect()
+            self.logger.info("✅ BMC Energy Manager stopped cleanly")
+
+if __name__ == "__main__":
+    manager = BMCEnergyManager()
+    manager.run()

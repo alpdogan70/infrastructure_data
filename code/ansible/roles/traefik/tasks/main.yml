@@ -1,0 +1,94 @@
+---
+# tasks file for roles/traefik
+
+- name: check if traefik exists
+  stat:
+    path: "{{ traefik_dir_bin }}/traefik"
+  register: __check_traefik_present
+
+- name: if traefik exists get version
+  shell: "cat /etc/systemd/system/traefik.service | grep Version | sed s/'.*Version '//g"
+  register: __get_traefik_version
+  when: __check_traefik_present.stat.exists == true
+  changed_when: false
+
+- name: create traefik user
+  user:
+    name: "{{ traefik_user }}"
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: false
+
+- name: create traefik directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ traefik_user }}"
+    group: "{{ traefik_group }}"
+    mode: 0755
+  loop:
+    - "{{ traefik_dir_conf }}"
+    - "{{ traefik_dir_log }}"
+
+- name: create temp dir
+  file:
+    path: "/tmp/traefik_v{{ traefik_version }}_linux_amd64/"
+    state: directory
+
+- name: download and unzip traefik if not exist
+  unarchive:
+    src: "https://github.com/traefik/traefik/releases/download/v{{ traefik_version }}/traefik_v{{ traefik_version }}_linux_amd64.tar.gz"
+    dest: /tmp/traefik_v{{ traefik_version }}_linux_amd64/
+    remote_src: yes
+    validate_certs: false
+  when: not __check_traefik_present.stat.exists or not __get_traefik_version.stdout == traefik_version
+
+- name: move the binary to the final destination
+  copy:
+    src: "/tmp/traefik_v{{ traefik_version }}_linux_amd64/traefik"
+    dest: "{{ traefik_dir_bin }}"
+    owner: "{{ traefik_user }}"
+    group: "{{ traefik_group }}"
+    mode: 0750
+    remote_src: yes
+  when: not __check_traefik_present.stat.exists or not __get_traefik_version.stdout == traefik_version
+
+- name: clean
+  file:
+    path: /tmp/traefik_v{{ traefik_version }}_linux_amd64/
+    state: absent
+
+- name: install service
+  template:
+    src: traefik.service.j2
+    dest: /etc/systemd/system/traefik.service
+    owner: root
+    group: root
+    mode: 0750
+  notify: restart_traefik
+
+- name: add configuration
+  template:
+    src: "{{ item }}.j2"
+    dest: "{{ traefik_dir_conf }}/{{ item }}"
+    owner: "{{ traefik_user }}"
+    group: "{{ traefik_group }}"
+    mode: 0750
+  loop:
+    - "traefik.toml"
+    - "dynamic.toml"
+  notify: restart_traefik
+
+- name: Create acme.json file for Let's Encrypt
+  ansible.builtin.file:
+    path: /etc/traefik/acme.json
+    state: touch
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: service always started
+  systemd:
+    name: traefik
+    state: started
+    enabled: true

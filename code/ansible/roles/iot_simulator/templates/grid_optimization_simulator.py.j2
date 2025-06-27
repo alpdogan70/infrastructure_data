@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""
+Grid and Optimization Data Simulator
+Complements the main datacenter simulator for complete energy metrics
+File: /ansible/roles/iot_simulator/templates/grid_optimization_simulator.py.j2
+"""
+
+import json
+import random
+import time
+import paho.mqtt.client as mqtt
+from datetime import datetime
+
+# Configuration from Ansible variables
+MQTT_BROKER = "{{ mqtt_broker_host }}"
+MQTT_PORT = 1883
+MQTT_USERNAME = "iot"
+MQTT_PASSWORD = "iot123"
+
+class GridOptimizationSimulator:
+    def __init__(self):
+        self.client = mqtt.Client(client_id=f"grid_opt_sim_{random.randint(1000,9999)}")
+        self.client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+        self.client.on_connect = self.on_connect
+        self.running = True
+        
+    def on_connect(self, client, userdata, flags, rc):
+        if rc == 0:
+            print(f"🔌 Grid & Optimization Simulator connected to MQTT broker at {MQTT_BROKER}")
+        else:
+            print(f"❌ Failed to connect, return code {rc}")
+        
+    def simulate_grid_data(self):
+        """Simulate realistic grid connection data"""
+        # Voltage simulation (230V ±2% European standard)
+        voltage = 230 + random.uniform(-5, 5)
+        frequency = 50 + random.uniform(-0.1, 0.1)
+        
+        # Dynamic electricity pricing based on time of day
+        hour = datetime.now().hour
+        if 7 <= hour <= 9 or 17 <= hour <= 21:  # Peak hours
+            electricity_price = random.uniform(25, 35)
+            tariff_type = "peak"
+        elif 22 <= hour <= 6:  # Off-peak hours
+            electricity_price = random.uniform(8, 12)
+            tariff_type = "off_peak"
+        else:  # Normal hours
+            electricity_price = random.uniform(15, 20)
+            tariff_type = "normal"
+        
+        # Grid power simulation (negative = export, positive = import)
+        # Simulate realistic patterns based on solar production vs consumption
+        if 10 <= hour <= 16:  # Solar production hours
+            grid_power = random.uniform(-3000, 1000)  # Mostly exporting
+        else:  # Non-solar hours
+            grid_power = random.uniform(500, 4000)  # Importing
+        
+        grid_data = {
+            "voltage": round(voltage, 1),
+            "frequency": round(frequency, 3),
+            "power_factor": round(random.uniform(0.90, 0.98), 3),
+            "grid_power": round(grid_power, 2),
+            "import_power": round(max(0, grid_power), 2),
+            "export_power": round(max(0, -grid_power), 2),
+            "electricity_price": round(electricity_price, 2),
+            "tariff_type": tariff_type,
+            "grid_quality": "excellent" if abs(voltage - 230) < 3 else "good",
+            "power_outages": 0,  # For future monitoring
+            "grid_efficiency": round(random.uniform(0.95, 0.99), 3),
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+        
+        topic = "energy/grid/datacenter/status"
+        self.client.publish(topic, json.dumps(grid_data))
+        print(f"⚡ Grid: {grid_data['grid_power']:+.0f}W, {grid_data['electricity_price']}¢/kWh ({grid_data['tariff_type']})")
+        
+    def simulate_optimization_data(self):
+        """Simulate intelligent energy optimization decisions"""
+        # Energy management modes based on realistic scenarios
+        hour = datetime.now().hour
+        
+        # Determine mode based on time and conditions
+        if 10 <= hour <= 16:  # Solar production hours
+            if random.random() < 0.7:
+                mode = random.choice(["solar_charging", "solar_export"])
+            else:
+                mode = "battery_discharge"
+        else:  # Non-solar hours
+            if random.random() < 0.6:
+                mode = "battery_discharge"
+            else:
+                mode = "grid_import"
+        
+        # Realistic energy metrics
+        solar_production = random.uniform(1000, 8000) if 8 <= hour <= 18 else random.uniform(0, 500)
+        total_consumption = random.uniform(3000, 6000)
+        battery_soc = random.uniform(20, 95)
+        
+        # Efficiency scores based on mode
+        efficiency_scores = {
+            "solar_charging": random.randint(92, 98),
+            "solar_export": random.randint(85, 92),
+            "battery_discharge": random.randint(78, 88),
+            "grid_import": random.randint(65, 78)
+        }
+        
+        # Intelligent recommendations
+        recommendations = {
+            "solar_charging": "Optimizing battery storage from solar surplus - excellent conditions",
+            "solar_export": "Maximizing revenue from solar export during peak pricing",
+            "battery_discharge": "Using stored energy efficiently during high demand periods",
+            "grid_import": "Strategic grid import during optimal tariff periods"
+        }
+        
+        # Cost calculations
+        net_power = solar_production - total_consumption
+        if net_power < 0:
+            cost_per_hour = abs(net_power) * random.uniform(0.15, 0.35) / 1000
+        else:
+            cost_per_hour = -net_power * random.uniform(0.10, 0.25) / 1000  # Revenue from export
+        
+        # Advanced metrics for energy management
+        carbon_footprint = max(0, total_consumption - solar_production) * 0.5  # kg CO2/kWh estimate
+        energy_independence = min(100, (solar_production / total_consumption) * 100) if total_consumption > 0 else 0
+        
+        optimization_data = {
+            "mode": mode,
+            "decision": recommendations[mode],
+            "solar_production_w": round(solar_production, 2),
+            "total_consumption_w": round(total_consumption, 2),
+            "net_power_w": round(net_power, 2),
+            "battery_soc": round(battery_soc, 1),
+            "efficiency_score": efficiency_scores[mode],
+            "cost_per_hour": round(cost_per_hour, 3),
+            "electricity_price": round(random.uniform(15, 30), 2),
+            "recommendation": recommendations[mode],
+            "carbon_footprint_kg": round(carbon_footprint, 3),
+            "energy_independence_pct": round(energy_independence, 1),
+            "peak_shaving_active": hour in [18, 19, 20, 21],
+            "load_balancing_score": random.randint(75, 95),
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+        
+        topic = "energy/optimization/datacenter/decision"
+        self.client.publish(topic, json.dumps(optimization_data))
+        
+        # Console output with emojis
+        mode_emoji = {
+            "solar_charging": "☀️🔋",
+            "solar_export": "☀️📤",
+            "battery_discharge": "🔋📤",
+            "grid_import": "⚡📥"
+        }
+        
+        emoji = mode_emoji.get(mode, "⚙️")
+        print(f"{emoji} Optimization: {mode}, Efficiency: {optimization_data['efficiency_score']}%, Independence: {optimization_data['energy_independence_pct']}%")
+    
+    def run(self):
+        """Main simulation loop"""
+        print("🔌 Starting Grid & Optimization Simulator for Datacenter...")
+        print(f"📊 Connecting to MQTT broker: {MQTT_BROKER}")
+        
+        try:
+            self.client.connect(MQTT_BROKER, MQTT_PORT, 60)
+            self.client.loop_start()
+        except Exception as e:
+            print(f"❌ Failed to connect to MQTT broker: {e}")
+            return
+        
+        # Wait for connection
+        time.sleep(2)
+        
+        try:
+            while self.running:
+                # Simulate grid data every 30 seconds
+                self.simulate_grid_data()
+                time.sleep(5)
+                
+                # Simulate optimization decisions every 45 seconds
+                self.simulate_optimization_data()
+                time.sleep(40)
+                
+        except KeyboardInterrupt:
+            print("\n🛑 Shutting down grid & optimization simulator...")
+            self.running = False
+        
+        # Cleanup
+        self.client.loop_stop()
+        self.client.disconnect()
+        print("✅ Grid & Optimization Simulator stopped cleanly")
+
+if __name__ == "__main__":
+    simulator = GridOptimizationSimulator()
+    simulator.run()

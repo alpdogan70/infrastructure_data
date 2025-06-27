@@ -1,0 +1,51 @@
+---
+# tasks file for roles/vmetrics
+
+- name: check if vmetrics exists
+  stat:
+    path: /usr/local/bin/victoria-metrics-prod
+  register: __vmetrics_exists
+
+- name: if vmetrics exists get version
+  shell: "cat /etc/systemd/system/vmetrics.service | grep Version | sed s/'.*Version '//g"
+  register: __get_vmetrics_version
+  when: __vmetrics_exists.stat.exists == true
+  changed_when: false
+
+- name: create user vmetrics
+  user:   
+    name: "{{ vmetrics_user }}"
+    system: yes
+    shell: /sbin/nologin
+    state: present
+
+- name: create vmetrics directory
+  file:
+    path: "{{ vmetrics_dir_data }}"
+    state: directory
+    owner: "{{ vmetrics_user }}"
+    group: "{{ vmetrics_user }}"
+    mode: 0750
+    recurse: yes
+
+- name: download vmetrics
+  unarchive:
+    src: https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v{{ vmetrics_version }}/victoria-metrics-linux-amd64-v{{ vmetrics_version }}.tar.gz
+    dest: /usr/local/bin
+    remote_src: yes
+  when: __vmetrics_exists.stat.exists == False or not __get_vmetrics_version.stdout == vmetrics_version
+
+- name: vmetrics configuration file
+  template:
+    src: vmetrics.service.j2
+    dest: /etc/systemd/system/vmetrics.service           
+    mode: 0750
+  notify: restart_vmetrics
+
+- meta: flush_handlers
+
+- name: start vmetrics
+  systemd:
+    name: vmetrics
+    state: started
+    enabled: yes

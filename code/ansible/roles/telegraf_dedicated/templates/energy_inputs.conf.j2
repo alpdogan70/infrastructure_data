@@ -1,0 +1,131 @@
+# Energy monitoring MQTT topics
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "energy/solar/+/production",
+    "energy/solar/+/voltage", 
+    "energy/solar/+/current",
+    "energy/solar/+/efficiency"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-solar"
+  
+  data_format = "json"
+  tag_keys = ["panel_id", "location", "type"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "solar_production"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "solar_panels"
+    collector = "telegraf"
+
+# Battery monitoring
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "energy/battery/+/charge_level",
+    "energy/battery/+/voltage",
+    "energy/battery/+/current",
+    "energy/battery/+/temperature",
+    "energy/battery/+/health"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-battery"
+  
+  data_format = "json"
+  tag_keys = ["battery_id", "location", "type", "chemistry"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "battery_status"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "batteries"
+    collector = "telegraf"
+
+# Energy consumption monitoring
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "energy/consumption/+/power",
+    "energy/consumption/+/energy",
+    "energy/devices/+/power",
+    "energy/circuits/+/load"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-consumption"
+  
+  data_format = "json"
+  tag_keys = ["device_id", "circuit_id", "location", "device_type"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "energy_consumption"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "consumption"
+    collector = "telegraf"
+
+# Grid data monitoring
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "energy/grid/voltage",
+    "energy/grid/frequency",
+    "energy/grid/power_factor",
+    "energy/grid/import",
+    "energy/grid/export"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-grid"
+  
+  data_format = "json"
+  tag_keys = ["grid_id", "phase"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "grid_data"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "grid"
+    collector = "telegraf"
+
+# Weather data for solar predictions
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "weather/irradiance",
+    "weather/cloud_cover",
+    "weather/wind_speed",
+    "weather/ambient_temperature"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-weather"
+  
+  data_format = "json"
+  tag_keys = ["station_id", "location"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "weather_data"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "weather"
+    collector = "telegraf"

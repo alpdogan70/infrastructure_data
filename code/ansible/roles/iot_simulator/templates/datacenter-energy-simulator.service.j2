@@ -1,0 +1,21 @@
+[Unit]
+Description=Datacenter Energy Management Simulator
+After=network.target mqtt.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/iot-simulator
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/opt/iot-simulator/venv/bin/python /opt/iot-simulator/datacenter_energy_simulator.py
+Restart=always
+RestartSec=20
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits for datacenter simulation
+MemoryMax=512M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target

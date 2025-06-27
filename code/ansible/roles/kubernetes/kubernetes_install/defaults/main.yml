@@ -1,0 +1,18 @@
+---
+# defaults file for roles/kubernetes
+kubernetes_prerequisites_packages:
+  - apt-transport-https
+  - gpg
+  - ca-certificates
+  - curl
+  - gnupg2
+  - lsb-release
+  - bridge-utils
+kubernetes_minor_version: "1.30"
+kubernetes_version: "{{ kubernetes_minor_version }}.3-1.1"
+kubernetes_cidr_pods: "10.200.0.0/16"
+kubernetes_cidr_services: "10.201.0.0/16"
+kubeadm_init_master: ""
+kubeadm_master_group_name: ""
+kubeadm_worker_group_name: ""
+kubernetes_consul_group: "meta-app_consul"

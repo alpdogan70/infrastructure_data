@@ -1,0 +1,15 @@
+# Prometheus output for monitoring
+[[outputs.prometheus_client]]
+  listen = ":9273"
+  metric_version = 2
+  export_timestamp = true
+  string_as_label = true
+  
+# Log file output for debugging
+[[outputs.file]]
+  files = ["/var/log/telegraf/metrics.out"]
+  rotation_interval = "24h"
+  rotation_max_size = "100MB"
+  rotation_max_archives = 3
+  data_format = "json"
+  namepass = ["internal*"]

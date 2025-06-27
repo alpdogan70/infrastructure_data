@@ -1,0 +1,44 @@
+# Datacenter Solar Production
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "solar_panels"
+  timeout = "5s"
+  namepass = ["datacenter_solar"]
+
+# Datacenter Battery Data
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "batteries"
+  timeout = "5s"
+  namepass = ["datacenter_battery"]
+
+# Datacenter Consumption
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "energy_consumption"
+  timeout = "5s"
+  namepass = ["datacenter_consumption"]
+
+# Grid Data
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "grid_data"
+  timeout = "5s"
+  namepass = ["datacenter_grid"]
+
+# Energy Optimization Analytics
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "energy_analytics"
+  timeout = "5s"
+  namepass = ["datacenter_optimization"]

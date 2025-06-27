@@ -1,0 +1,84 @@
+---
+# Service Consul pour Energy AI (suivant le pattern de vos autres services)
+# File: ansible/roles/consul/consul_service_energy_ai/tasks/main.yml
+
+- name: Register Energy AI Predictor service in Consul
+  copy:
+    dest: /etc/consul.d/energy-ai-predictor.service.json
+    owner: consul
+    group: consul
+    mode: '0644'
+    content: |
+      {
+        "service": {
+          "name": "energy-ai-predictor",
+          "tags": ["energy", "ai", "predictor", "ml"],
+          "address": "{{ ansible_default_ipv4.address }}",
+          "port": 8080,
+          "meta": {
+            "version": "{{ energy_ai.version }}",
+            "environment": "{{ energy_ai.environment }}",
+            "ai_models": "solar,consumption,optimization"
+          },
+          "check": {
+            "http": "http://{{ ansible_default_ipv4.address }}:8080/health",
+            "interval": "30s",
+            "timeout": "10s"
+          }
+        }
+      }
+  notify: reload consul
+
+- name: Register Energy Scenarios service in Consul
+  copy:
+    dest: /etc/consul.d/energy-scenarios.service.json
+    owner: consul
+    group: consul
+    mode: '0644'
+    content: |
+      {
+        "service": {
+          "name": "energy-scenarios",
+          "tags": ["energy", "scenarios", "automation", "optimization"],
+          "address": "{{ ansible_default_ipv4.address }}",
+          "port": 8081,
+          "meta": {
+            "version": "{{ energy_ai.version }}",
+            "scenarios_count": "6",
+            "auto_execution": "true"
+          },
+          "check": {
+            "tcp": "{{ ansible_default_ipv4.address }}:8081",
+            "interval": "30s",
+            "timeout": "10s"
+          }
+        }
+      }
+  notify: reload consul
+
+- name: Register Energy AI Dashboard service in Consul
+  copy:
+    dest: /etc/consul.d/energy-ai-dashboard.service.json
+    owner: consul
+    group: consul
+    mode: '0644'
+    content: |
+      {
+        "service": {
+          "name": "energy-ai-dashboard",
+          "tags": ["energy", "ai", "dashboard", "web"],
+          "address": "{{ ansible_default_ipv4.address }}",
+          "port": 80,
+          "meta": {
+            "dashboard_type": "grafana",
+            "ai_intelligence": "enabled",
+            "predictions": "24h_forecast"
+          },
+          "check": {
+            "http": "http://{{ ansible_default_ipv4.address }}/d/energy-ai-intelligence",
+            "interval": "60s",
+            "timeout": "15s"
+          }
+        }
+      }
+  notify: reload consul

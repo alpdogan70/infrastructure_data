@@ -1,0 +1,76 @@
+# File: templates/influxdb-datasource-values.yml.j2
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource-influxdb
+  namespace: monitoring
+  labels:
+    apps: prometheus-operator-grafana
+    grafana_datasource: "1"
+data:
+  influxdb-datasource.yml: |
+    apiVersion: 1
+    datasources:
+      - name: InfluxDB_IoT
+        type: influxdb
+        access: proxy
+        url: http://{{ kubernetes_influxdb_host }}:8086
+        database: "{{ kubernetes_influxdb_org }}"
+        user: "{{ kubernetes_influxdb_admin_user }}"
+        secureJsonData:
+          token: "{{ kubernetes_influxdb_token }}"
+        jsonData:
+          version: Flux
+          organization: "{{ kubernetes_influxdb_org }}"
+          defaultBucket: "{{ kubernetes_influxdb_bucket }}"
+          tlsSkipVerify: true
+        isDefault: false
+        editable: true
+      
+      - name: InfluxDB_Solar
+        type: influxdb
+        access: proxy
+        url: http://{{ kubernetes_influxdb_host }}:8086
+        database: "{{ kubernetes_influxdb_org }}"
+        user: "{{ kubernetes_influxdb_admin_user }}"
+        secureJsonData:
+          token: "{{ kubernetes_influxdb_token }}"
+        jsonData:
+          version: Flux
+          organization: "{{ kubernetes_influxdb_org }}"
+          defaultBucket: "solar_panels"
+          tlsSkipVerify: true
+        isDefault: false
+        editable: true
+      
+      - name: InfluxDB_Battery
+        type: influxdb
+        access: proxy
+        url: http://{{ kubernetes_influxdb_host }}:8086
+        database: "{{ kubernetes_influxdb_org }}"
+        user: "{{ kubernetes_influxdb_admin_user }}"
+        secureJsonData:
+          token: "{{ kubernetes_influxdb_token }}"
+        jsonData:
+          version: Flux
+          organization: "{{ kubernetes_influxdb_org }}"
+          defaultBucket: "batteries"
+          tlsSkipVerify: true
+        isDefault: false
+        editable: true
+      
+      - name: InfluxDB_Energy
+        type: influxdb
+        access: proxy
+        url: http://{{ kubernetes_influxdb_host }}:8086
+        database: "{{ kubernetes_influxdb_org }}"
+        user: "{{ kubernetes_influxdb_admin_user }}"
+        secureJsonData:
+          token: "{{ kubernetes_influxdb_token }}"
+        jsonData:
+          version: Flux
+          organization: "{{ kubernetes_influxdb_org }}"
+          defaultBucket: "energy_consumption"
+          tlsSkipVerify: true
+        isDefault: false
+        editable: true

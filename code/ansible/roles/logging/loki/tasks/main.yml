@@ -1,0 +1,43 @@
+---
+# tasks file for roles/logging/loki
+
+#- name: add gpg hey
+#  apt_key:
+#    url: "https://packages.grafana.com/gpg.key"
+#    validate_certs: yes
+#
+#- name: add repository
+#  apt_repository:
+#    repo: "deb https://packages.grafana.com/oss/deb stable main"
+#    state: present
+#    validate_certs: yes
+
+- name: install loki
+  apt:
+    deb: "https://github.com/grafana/loki/releases/download/v{{ loki_version }}/loki_{{ loki_version }}_amd64.deb"
+
+- name: create data dir for loki
+  file:
+    state: directory
+    path: "{{ loki_dir_data }}"
+    owner: loki
+    group: loki
+    mode: 0750
+    recurse: yes
+
+- name: loki install configuration
+  template:
+    src: config.yml.j2
+    dest: /etc/loki/config.yml        
+    mode: 0750
+    owner: loki
+    group: loki
+  notify: restart_loki
+
+- name: start loki
+  systemd:
+    name: loki
+    state: started
+    enabled: yes 
+
+- meta: flush_handlers

@@ -1,0 +1,47 @@
+---
+# Collecter les facts de tous les hôtes d'abord
+- name: Gather facts from all hosts
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - name: Ensure facts are gathered
+      debug:
+        msg: "Facts gathered for {{ inventory_hostname }}"
+
+- name: consul_master
+  hosts: meta-app_consul
+  become: true
+  vars:
+    consul_master: true
+    consul_dir_master_data: "/data"
+    volumes_disks:
+      - { disk: '/dev/vdb', path: '{{ consul_dir_master_data }}', owner: "consul" }
+    backups_consul_key: "{{ backups_s3_secret_key }}"
+    backups_consul_secret_key: "{{ vault_backups_consul_secret_key }}"
+    backups_consul_secret_password: "{{ vault_backups_consul_secret_password }}"
+    # Variable dynamique pour l'endpoint MinIO
+    minio_endpoint: "{{ hostvars[groups['meta-app_minio'][0]]['ansible_default_ipv4']['address'] }}"
+    #backups_consul_cron_schedule: "0 2 * * *"
+    vault_backups_consul_secret_password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          39643235663936333063636262653562346437316564653731633230313866636261333539613865
+          3864396330303365656536336161663764646331623865610a613464353639656365363564393766
+          34613165613736373561313066666435343735336565323863366539343862663161323861613531
+          3830356130383265310a343236393337313031613965336634366562343337373034363061643734
+          66376264313866343631633136373363653837343566643735316537656137653361393939633537
+          6539363533643565383437326132333839343438663965633961
+  roles:
+    - volumes
+    - consul/consul
+    - consul/backups_consul
+    - monitoring/custom_metrics
+
+- name: consul agent
+  hosts: all,!meta-app_consul
+  become: true
+  roles:
+    - consul/consul
+
+
+    
+

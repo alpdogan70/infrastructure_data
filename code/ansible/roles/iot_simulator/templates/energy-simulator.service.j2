@@ -1,0 +1,17 @@
+[Unit]
+Description=Energy IoT Device Simulator (Solar, Battery, Grid)
+After=network.target freertos-simulator.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/iot-simulator
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/opt/iot-simulator/venv/bin/python /opt/iot-simulator/energy_simulator.py
+Restart=always
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,41 @@
+- name: Install prerequisites
+  hosts: k8sm1
+  become: true
+  roles:
+    - consul/consul_services
+    - kubernetes/kubernetes_install
+  vars:
+    kubernetes_api_cert_sans: "k8s-apiserver.service.consul"
+    kubernetes_api_endpoint: "{{ kubernetes_api_cert_sans }}"
+    consul_services:
+      - {
+        name: "k8s-apiserver",
+        type: "tcp",
+        check_target: "127.0.0.1:6443",
+        interval: "10s",
+        port: 6443      
+        }
+
+- name: Install prerequisites
+  hosts: meta-app_k8sm,!k8sm1
+  serial: 1
+  become: true
+  roles:
+    - consul/consul_services
+    - kubernetes/kubernetes_install
+  vars:
+    consul_services:
+      - {
+        name: "k8s-apiserver",
+        type: "tcp",
+        check_target: "127.0.0.1:6443",
+        interval: "10s",
+        port: 6443      
+        }
+
+- name: Install prerequisites
+  hosts: meta-app_k8sw
+  become: true
+  serial: 10
+  roles:
+    - kubernetes/kubernetes_install

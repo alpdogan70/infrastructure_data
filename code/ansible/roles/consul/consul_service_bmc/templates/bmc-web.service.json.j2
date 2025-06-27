@@ -1,0 +1,27 @@
+# File: consul_service_bmc/templates/bmc-web.service.json.j2
+{
+  "service": {
+    "name": "bmc-web",
+    "tags": [
+      "bmc",
+      "web-interface", 
+      "ipmi",
+      "datacenter",
+      "energy-management"
+    ],
+    "address": "{{ ansible_default_ipv4.address }}",
+    "port": 80,
+    "meta": {
+      "version": "aspeed-ast2600",
+      "environment": "{{ metadatas.environment }}",
+      "managed_servers": "12",
+      "energy_aware": "true"
+    },
+    "check": {
+      "http": "http://{{ ansible_default_ipv4.address }}/api/bmc/status",
+      "method": "GET",
+      "interval": "30s",
+      "timeout": "10s"
+    }
+  }
+}

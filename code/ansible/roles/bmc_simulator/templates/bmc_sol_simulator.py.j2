@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""
+BMC Serial Over LAN (SOL) Simulator
+Simulates console access via IPMI SOL
+File: /ansible/roles/bmc_simulator/templates/bmc_sol_simulator.py.j2
+"""
+
+import socket
+import threading
+import time
+from datetime import datetime
+
+class BMCSOLSimulator:
+    def __init__(self):
+        self.running = True
+        self.clients = {}
+        
+    def start_sol_server(self):
+        """Start SOL server on port 623"""
+        try:
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.socket.bind(('0.0.0.0', 623))
+            self.socket.listen(5)
+            
+            print("📟 SOL Simulator listening on port 623")
+            
+            while self.running:
+                try:
+                    client_sock, addr = self.socket.accept()
+                    print(f"📟 SOL connection from {addr[0]}")
+                    
+                    # Handle client in separate thread
+                    threading.Thread(
+                        target=self._handle_sol_client,
+                        args=(client_sock, addr),
+                        daemon=True
+                    ).start()
+                    
+                except Exception as e:
+                    if self.running:
+                        print(f"❌ SOL server error: {e}")
+                        
+        except Exception as e:
+            print(f"❌ Failed to start SOL server: {e}")
+    
+    def _handle_sol_client(self, client_sock, addr):
+        """Handle SOL client connection"""
+        try:
+            # Send welcome message
+            welcome = f"BMC SOL Console - Connected at {datetime.now()}\r\n"
+            welcome += "Type 'help' for commands or 'exit' to disconnect\r\n"
+            welcome += "bmc-console# "
+            client_sock.send(welcome.encode())
+            
+            while self.running:
+                try:
+                    data = client_sock.recv(1024)
+                    if not data:
+                        break
+                        
+                    command = data.decode().strip()
+                    
+                    if command.lower() == 'exit':
+                        client_sock.send(b"Goodbye!\r\n")
+                        break
+                    elif command.lower() == 'help':
+                        help_text = "Available commands:\r\n"
+                        help_text += "  help - Show this help\r\n"
+                        help_text += "  status - Show system status\r\n"
+                        help_text += "  exit - Disconnect\r\n"
+                        help_text += "bmc-console# "
+                        client_sock.send(help_text.encode())
+                    elif command.lower() == 'status':
+                        status = "System Status: OK\r\n"
+                        status += f"Time: {datetime.now()}\r\n"
+                        status += "BMC: AST2600 Simulator\r\n"
+                        status += "bmc-console# "
+                        client_sock.send(status.encode())
+                    else:
+                        response = f"Unknown command: {command}\r\n"
+                        response += "bmc-console# "
+                        client_sock.send(response.encode())
+                        
+                except socket.timeout:
+                    continue
+                except Exception as e:
+                    print(f"❌ SOL client error: {e}")
+                    break
+                    
+        except Exception as e:
+            print(f"❌ SOL handler error: {e}")
+        finally:
+            client_sock.close()
+            print(f"📟 SOL disconnected from {addr[0]}")
+    
+    def run(self):
+        """Main SOL simulator loop"""
+        print("📟 Starting BMC SOL Simulator...")
+        
+        try:
+            self.start_sol_server()
+        except KeyboardInterrupt:
+            print("\n🛑 Shutting down SOL simulator...")
+            self.running = False
+        except Exception as e:
+            print(f"❌ SOL simulator error: {e}")
+        finally:
+            if hasattr(self, 'socket'):
+                self.socket.close()
+
+if __name__ == "__main__":
+    simulator = BMCSOLSimulator()
+    simulator.run()

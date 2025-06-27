@@ -1,0 +1,14 @@
+[Unit]
+Description=traefik proxy  Version {{ traefik_version }}
+After=network-online.target
+Wants=network-online.target systemd-networkd-wait-online.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+Restart=on-failure
+ExecStart=/usr/local/bin/traefik --configfile={{ traefik_dir_conf}}/traefik.toml
+
+[Install]
+WantedBy=multi-user.target

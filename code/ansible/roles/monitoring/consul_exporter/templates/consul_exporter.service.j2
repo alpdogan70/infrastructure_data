@@ -1,0 +1,22 @@
+[Unit]
+Description=Consul Exporter Version {{ consul_exporter_version }}
+Documentation=https://github.com/prometheus/consul_exporter/releases
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=consul_exporter
+Group=consul_exporter
+ExecStart={{ consul_exporter_binary_path }}/consul_exporter \
+    --consul.server={{ consul_exporter_address }} \
+    --consul.timeout=30s
+
+ExecReload=/bin/kill -HUP $MAINPID
+KillSignal=SIGINT
+TimeoutStopSec=5
+Restart=on-failure
+SyslogIdentifier=consul_exporter
+
+[Install]
+WantedBy=multi-user.target

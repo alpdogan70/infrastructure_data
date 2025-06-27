@@ -1,0 +1,118 @@
+- name: Check if already init
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: __kubeadm_already_init
+
+- name: Pull images
+  ansible.builtin.command: "kubeadm config images pull" 
+  when: not __kubeadm_already_init.stat.exists
+  changed_when: false
+
+- name: Init cluster
+  ansible.builtin.command: "kubeadm init --apiserver-advertise-address={{ ansible_default_ipv4.address }} --apiserver-cert-extra-sans={{ kubernetes_api_cert_sans | default(ansible_default_ipv4.address) }} --node-name={{ ansible_hostname }} --pod-network-cidr={{ kubernetes_cidr_pods }}  --service-cidr={{ kubernetes_cidr_services }} --control-plane-endpoint={{ kubernetes_api_endpoint | default(ansible_default_ipv4.address) }}"
+  register: __init_output
+  when: not __kubeadm_already_init.stat.exists
+
+- name: Check if kubeconfig already exists
+  ansible.builtin.stat:
+    path: "{{ ansible_env.HOME }}/.kube"
+  register: __kubeconfig_already_init
+
+- name: Create .kube directory
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.kube"
+    state: directory
+    owner: root
+    group: root
+    mode: 0750
+  when: not __kubeconfig_already_init.stat.exists
+
+- name: Copy admin.conf to .kube/config
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "{{ ansible_env.HOME }}/.kube/config"
+    remote_src: true
+    mode: 0640
+  when: not __kubeconfig_already_init.stat.exists
+
+#---------------------------------------------------
+- name: Check if kubeconfig is valid
+  ansible.builtin.command: kubectl cluster-info
+  register: __kubeconfig_valid
+  ignore_errors: true
+
+- name: Create .kube directory
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.kube"
+    state: directory
+    owner: root
+    group: root
+    mode: 0750
+  when: __kubeconfig_valid is failed
+
+- name: Copy admin.conf to .kube/config
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "{{ ansible_env.HOME }}/.kube/config"
+    remote_src: true
+    mode: 0640
+  when: __kubeconfig_valid is failed
+#---------------------------------------------------
+
+
+#---------------------------------------------------
+# Configuration kubeconfig pour les utilisateurs
+#---------------------------------------------------
+
+- name: Setup kubeconfig for regular users
+  block:
+    - name: Ensure user .kube directory exists
+      ansible.builtin.file:
+        path: "/home/{{ item }}/.kube"
+        state: directory
+        owner: "{{ item }}"
+        group: "{{ item }}"
+        mode: '0750'
+      loop:
+        - xpestel
+        - staner
+
+    - name: Copy admin.conf to user's kubeconfig
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: "/home/{{ item }}/.kube/config"
+        remote_src: true
+        owner: "{{ item }}"
+        group: "{{ item }}"
+        mode: '0640'
+        backup: true
+      loop:
+        - xpestel
+        - staner
+
+
+#-------------------------------------------------------
+
+- name: Check if master is initialized
+  ansible.builtin.uri:
+    url: "https://{{ ansible_default_ipv4.address }}:6443"
+    validate_certs: no
+    status_code: [403]
+  register: result
+  until: "result.status == 403"
+  retries: 20
+  delay: 5
+  when: not __kubeconfig_already_init.stat.exists
+
+- name: Add CNI - kuberouter
+  ansible.builtin.shell: kubectl apply -f https://raw.githubusercontent.com/cloudnativelabs/kube-router/master/daemonset/kubeadm-kuberouter.yaml
+  when: not __kubeadm_already_init.stat.exists
+
+- name: fix the coredns loop issue
+  template:
+    src: configmap-coredns-fix.yml.j2
+    dest: /etc/kubernetes/configmap-coredns-fix.yml
+    owner: root
+    group: root
+    mode: 0750
+  notify: apply_coredns_configmap

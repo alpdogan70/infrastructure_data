@@ -1,0 +1,19 @@
+[Unit]
+Description=Description=VictoriaAlert service Version {{ vmagent_version }}
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/vmalert-prod \
+      -datasource.url=http://{{ vmalert_remote }}:8428/ \
+      -remoteRead.url=http://{{ vmalert_remote }}:8428/ \
+      -remoteWrite.url=http://{{ vmalert_remote }}:8428/ \
+      -notifier.url=http://127.0.0.1:9093 \
+      -rule=/etc/vmalert/*.yml \
+      -external.url=http://{{ vmalert_grafana }}:3000
+
+SyslogIdentifier=vmalert
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

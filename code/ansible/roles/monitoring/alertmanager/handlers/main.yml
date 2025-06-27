@@ -1,0 +1,9 @@
+---
+# handlers file for roles/alertmanager
+
+- name: restart_alertmanager
+  systemd:
+    name: alertmanager
+    state: restarted
+    enabled: yes
+    daemon_reload: yes

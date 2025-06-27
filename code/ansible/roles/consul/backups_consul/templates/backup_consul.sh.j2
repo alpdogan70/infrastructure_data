@@ -1,0 +1,95 @@
+#!/bin/bash
+set -e
+
+# Source credentials
+source /root/.config/restic/restic_consul.creds
+
+# Variables
+BACKUP_NAME="consul-backup-$(date +%Y%m%d-%H%M%S)"
+BACKUP_DIR="/tmp/${BACKUP_NAME}"
+LOG_FILE="/var/log/backups/consul-$(date +%Y%m%d).log"
+
+# Function to log
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+# Start backup
+log "Starting Consul backup"
+
+# Create backup directory
+mkdir -p "$BACKUP_DIR"
+
+# Take Consul snapshot
+log "Creating Consul snapshot"
+consul snapshot save "$BACKUP_DIR/consul.snap"
+
+# Create metadata file
+cat > "$BACKUP_DIR/metadata.json" <<EOF
+{
+  "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+  "hostname": "$(hostname)",
+  "consul_version": "$(consul version | head -1)"
+}
+EOF
+
+# Backup with Restic
+log "Backing up to MinIO with Restic"
+cd "$BACKUP_DIR"
+restic backup . \
+  --tag consul \
+  --tag "$(hostname)" \
+  --tag "$(date +%Y%m%d)" \
+  --host "$(hostname)"
+
+# Clean up local files
+cd /
+rm -rf "$BACKUP_DIR"
+
+# Prune old backups (keep 7 daily, 4 weekly, 6 monthly)
+log "Pruning old backups"
+restic forget \
+  --keep-daily 7 \
+  --keep-weekly 4 \
+  --keep-monthly 6 \
+  --prune
+
+# Check repository integrity (weekly on Sunday)
+if [ "$(date +%w)" -eq "0" ]; then
+    log "Running weekly repository check"
+    restic check
+fi
+
+log "Backup completed successfully"
+
+# List recent snapshots
+log "Recent backups:"
+restic snapshots --last 5
+
+# #!/bin/bash
+
+# ####################################
+# ## Backup for consul cluster
+# ## Version : v1.0
+# ####################################
+
+# LOG=/var/log/backups/restic_consul-$(date +%F).log
+
+# # source credentials
+# source /root/.config/restic/restic_consul.creds
+
+# # backup consul
+# /usr/local/bin/consul snapshot save /tmp/consul-backup.bck
+
+# # push backup
+# restic backup /tmp/consul-backup.bck
+
+# # purge backup
+# restic forget --keep-last=14 \
+#     --keep-within-daily=30d \
+#     --keep-within-weekly=90d \
+#     --keep-within-monthly=365d \
+#     --group-by '' \
+#     --prune \
+#     --host {{ ansible_hostname }}
+

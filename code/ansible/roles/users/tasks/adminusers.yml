@@ -1,0 +1,51 @@
+
+- name: load vars
+  include_vars: 
+    file: "{{ item }}"
+    name: "user"
+
+- name: define username
+  set_fact:
+    username:  "{{ item | basename | regex_replace('.yml$', '') }}"
+
+- name: "add user group {{ username }}"
+  group:
+    name: "{{ username }}"
+    state: present
+
+- name: "add admin user {{ username }}"
+  user:
+    name: "{{ username }}"
+    password: "{{ user.password | password_hash }}"
+    update_password: on_create
+    group: "{{ username }}"
+    groups: sudo
+    append: yes
+    shell: /bin/bash
+  changed_when: false
+
+- name: add to sudoers file and validate
+  lineinfile:
+    dest: /etc/sudoers
+    state: present
+    regexp: '^{{ username }} '
+    line: "{{ username }} ALL=(ALL) {{ 'NOPASSWD:' if ( user.sudo_nopass|d(false) )  else '' }}ALL"
+    validate: 'visudo -cf %s'
+  environment:
+    PATH: /usr/sbin:/usr/local/sbin:/sbin
+  when: user.use_sudo == true
+
+- name: "add ssh keys {{ username }}"
+  authorized_key:
+    user: "{{ username }}"
+    key: "{{ user.ssh_public_key }}"
+    state: present
+
+- name: copy custom bashrc if needed
+  copy:
+    src: "./users/{{ username }}.bashrc"
+    dest: "/home/{{ username }}/.bashrc"
+    owner: "{{ username }}"
+    group: "{{ username }}"
+    mode: 0750
+  when: user.custom_bashrc == true

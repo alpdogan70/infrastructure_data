@@ -1,0 +1,1019 @@
+---
+# Dashboard Datacenter Energy Management
+# File: /ansible/roles/kubernetes/kubernetes_tooling/files/dashboards/dashboard_datacenter_energy.yml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-datacenter-energy
+  namespace: monitoring
+  labels:
+    apps: prometheus-operator-grafana
+    grafana_dashboard: "1"
+data:
+  datacenter-energy.json: |
+    {
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "target": {
+              "limit": 100,
+              "matchAny": false,
+              "tags": [],
+              "type": "dashboard"
+            },
+            "type": "dashboard"
+          }
+        ]
+      },
+      "description": "Dashboard de gestion énergétique pour mini datacenter avec production solaire, batteries et optimisation intelligente",
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": 33,
+      "links": [],
+      "liveNow": true,
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "panels": [],
+          "title": "🌞 PRODUCTION SOLAIRE   🔋 BATTERIES   ⚡ CONSOMMATION",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "InfluxDB_Solar"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 2
+                  },
+                  {
+                    "color": "green",
+                    "value": 4
+                  }
+                ]
+              },
+              "unit": "kwatt"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 0,
+            "y": 1
+          },
+          "id": 2,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "percentChangeColorMode": "standard",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "limit": 1,
+              "values": true
+            },
+            "showPercentChange": false,
+            "textMode": "auto",
+            "wideLayout": true
+          },
+          "pluginVersion": "11.1.5",
+          "targets": [
+            {
+              "datasource": {
+                "type": "influxdb",
+                "uid": "InfluxDB_Solar"
+              },
+              "query": "from(bucket: \"solar_production\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"datacenter_solar\")\n  |> filter(fn: (r) => r._field == \"production_kw\")\n  |> last()",
+              "refId": "A"
+            }
+          ],
+          "title": "🌞 Production Solaire",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "InfluxDB_Battery"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 30
+                  },
+                  {
+                    "color": "green",
+                    "value": 60
+                  }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 4,
+            "y": 1
+          },
+          "id": 3,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "percentChangeColorMode": "standard",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showPercentChange": false,
+            "textMode": "auto",
+            "wideLayout": true
+          },
+          "pluginVersion": "11.1.5",
+          "targets": [
+            {
+              "datasource": {
+                "type": "influxdb",
+                "uid": "InfluxDB_Battery"
+              },
+              "query": "from(bucket: \"battery_system\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"datacenter_battery\")\n  |> filter(fn: (r) => r._field == \"charge_level\")\n  |> last()",
+              "refId": "A"
+            }
+          ],
+          "title": "🔋 Batteries",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "InfluxDB_Energy"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 5
+                  },
+                  {
+                    "color": "red",
+                    "value": 7
+                  }
+                ]
+              },
+              "unit": "kwatt"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 8,
+            "y": 1
+          },
+          "id": 4,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "percentChangeColorMode": "standard",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showPercentChange": false,
+            "textMode": "auto",
+            "wideLayout": true
+          },
+          "pluginVersion": "11.1.5",
+          "targets": [
+            {
+              "datasource": {
+                "type": "influxdb",
+                "uid": "InfluxDB_Energy"
+              },
+              "query": "from(bucket: \"energy_consumption\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"datacenter_consumption\")\n  |> filter(fn: (r) => r._field == \"total_consumption_kw\")\n  |> last()",
+              "refId": "A"
+            }
+          ],
+          "title": "⚡ Consommation",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P99416EC0F8906468"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                }
+              },
+              "mappings": [],
+              "unit": "kwatt"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "_value {_field=\"zone_a_consumption_kw\", _start=\"2025-06-23 07:29:10.292 +0000 UTC\", _stop=\"2025-06-23 07:59:10.292 +0000 UTC\", component=\"load\", environment=\"iot\", host=\"telegraf1\", role=\"telegraf\", source=\"datacenter\", topic=\"energy/consumption/datacenter/metrics\"}"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Zone A KW"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "_value {_field=\"zone_b_consumption_kw\", _start=\"2025-06-23 07:29:10.292 +0000 UTC\", _stop=\"2025-06-23 07:59:10.292 +0000 UTC\", component=\"load\", environment=\"iot\", host=\"telegraf1\", role=\"telegraf\", source=\"datacenter\", topic=\"energy/consumption/datacenter/metrics\"}"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Zone B KW"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "_value {_field=\"zone_c_consumption_kw\", _start=\"2025-06-23 07:29:10.292 +0000 UTC\", _stop=\"2025-06-23 07:59:10.292 +0000 UTC\", component=\"load\", environment=\"iot\", host=\"telegraf1\", role=\"telegraf\", source=\"datacenter\", topic=\"energy/consumption/datacenter/metrics\"}"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Zone C KW"
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 12,
+            "x": 12,
+            "y": 1
+          },
+          "id": 5,
+          "options": {
+            "displayLabels": [
+              "value",
+              "percent",
+              "name"
+            ],
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true,
+              "values": [
+                "value"
+              ]
+            },
+            "pieType": "donut",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": true
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "influxdb",
+                "uid": "InfluxDB_Energy"
+              },
+              "query": "from(bucket: \"energy_consumption\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"datacenter_consumption\")\n  |> filter(fn: (r) => r._field == \"zone_a_consumption_kw\" or r._field == \"zone_b_consumption_kw\" or r._field == \"zone_c_consumption_kw\")\n  |> last()\n  |> map(fn: (r) => ({r with _value: r._value, zone: if r._field == \"zone_a_consumption_kw\" then \"Zone A\" else if r._field == \"zone_b_consumption_kw\" then \"Zone B\" else \"Zone C\"}))",
+              "refId": "A"
+            }
+          ],
+          "title": "🗺️ Consommation par Zones",
+          "type": "piechart"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 7
+          },
+          "id": 6,
+          "panels": [],
+          "title": "📊 Tendances et Historiques",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "PCEF3F9874297E02D"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "gradientMode": "hue",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "kwatt"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "production_kw"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "yellow",
+                      "mode": "fixed"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "total_consumption_kw"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "red",
+                      "mode": "fixed"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          },
+          "id": 7,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "max",
+                "min"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "influxdb",
+                "uid": "InfluxDB_Solar"
+              },
+              "query": "from(bucket: \"solar_production\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"datacenter_solar\")\n  |> filter(fn: (r) => r._field == \"production_kw\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "influxdb",
+                "uid": "InfluxDB_Energy"
+              },
+              "query": "from(bucket: \"energy_consumption\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"datacenter_consumption\")\n  |> filter(fn: (r) => r._field == \"total_consumption_kw\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)",
+              "refId": "B"
+            }
+          ],
+          "title": "🌞 Production vs Consommation",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "InfluxDB_Battery"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "gradientMode": "hue",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              },
+              "mappings": [],
+              "max": 100,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 20
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 30
+                  },
+                  {
+                    "color": "green",
+                    "value": 50
+                  }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Niveau Batteries"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "blue",
+                      "mode": "fixed"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 8
+          },
+          "id": 8,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "max",
+                "min"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "influxdb",
+                "uid": "InfluxDB_Battery"
+              },
+              "query": "from(bucket: \"battery_system\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"datacenter_battery\")\n  |> filter(fn: (r) => r._field == \"charge_level\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)",
+              "refId": "A"
+            }
+          ],
+          "title": "🔋 Évolution Niveau Batteries",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 16
+          },
+          "id": 9,
+          "panels": [],
+          "title": "🌤️ Météo & Environnement",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P99416EC0F8906468"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "custom": {
+                "fillOpacity": 70,
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineWidth": 0,
+                "spanNulls": false
+              },
+              "mappings": [
+                {
+                  "options": {
+                    "Ensoleillé": {
+                      "color": "yellow",
+                      "index": 0,
+                      "text": "☀️ Ensoleillé"
+                    },
+                    "Nuageux": {
+                      "color": "blue",
+                      "index": 2,
+                      "text": "☁️ Nuageux"
+                    },
+                    "Partiellement nuageux": {
+                      "color": "orange",
+                      "index": 1,
+                      "text": "⛅ Partiellement nuageux"
+                    }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 17
+          },
+          "id": 10,
+          "options": {
+            "alignValue": "left",
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "mergeValues": true,
+            "rowHeight": 0.9,
+            "showValue": "auto",
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "11.1.5",
+          "targets": [
+            {
+              "datasource": {
+                "type": "influxdb",
+                "uid": "InfluxDB_IoT"
+              },
+              "query": "from(bucket: \"environmental_data\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"datacenter_weather\")\n  |> filter(fn: (r) => r._field == \"temperature\")  // Utilisez un field existant\n  |> last()\n  |> map(fn: (r) => ({\n      _time: r._time,\n      _value: r.condition,  // condition est disponible comme tag\n      _field: \"condition\"\n    }))",
+              "refId": "A"
+            }
+          ],
+          "title": "🌤️ Conditions Météo",
+          "type": "state-timeline"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "InfluxDB_IoT"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 15
+                  },
+                  {
+                    "color": "orange",
+                    "value": 25
+                  },
+                  {
+                    "color": "red",
+                    "value": 35
+                  }
+                ]
+              },
+              "unit": "celsius"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": ""
+                },
+                "properties": []
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 17
+          },
+          "id": 11,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "percentChangeColorMode": "standard",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "limit": 1,
+              "values": true
+            },
+            "showPercentChange": false,
+            "textMode": "auto",
+            "wideLayout": true
+          },
+          "pluginVersion": "11.1.5",
+          "targets": [
+            {
+              "datasource": {
+                "type": "influxdb",
+                "uid": "InfluxDB_IoT"
+              },
+              "query": "from(bucket: \"environmental_data\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"datacenter_weather\")\n  |> filter(fn: (r) => r._field == \"temperature\")\n  |> last()",
+              "refId": "A"
+            }
+          ],
+          "title": "🌡️ Température",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "InfluxDB_IoT"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 15
+                  },
+                  {
+                    "color": "red",
+                    "value": 25
+                  }
+                ]
+              },
+              "unit": "velocitykmh"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 17
+          },
+          "id": 12,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "percentChangeColorMode": "standard",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "limit": 1,
+              "values": true
+            },
+            "showPercentChange": false,
+            "textMode": "auto",
+            "wideLayout": true
+          },
+          "pluginVersion": "11.1.5",
+          "targets": [
+            {
+              "datasource": {
+                "type": "influxdb",
+                "uid": "InfluxDB_IoT"
+              },
+              "query": "from(bucket: \"environmental_data\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"datacenter_weather\")\n  |> filter(fn: (r) => r._field == \"wind_speed\")\n  |> last()",
+              "refId": "A"
+            }
+          ],
+          "title": "💨 Vent",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P99416EC0F8906468"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "custom": {
+                "fillOpacity": 70,
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineWidth": 0,
+                "spanNulls": false
+              },
+              "mappings": [
+                {
+                  "options": {
+                    "battery_discharge": {
+                      "color": "orange",
+                      "index": 2,
+                      "text": "🔋📤 Batterie"
+                    },
+                    "grid_import": {
+                      "color": "red",
+                      "index": 3,
+                      "text": "⚡📥 Réseau"
+                    },
+                    "solar_charging": {
+                      "color": "green",
+                      "index": 0,
+                      "text": "☀️🔋 Charge Solaire"
+                    },
+                    "solar_export": {
+                      "color": "yellow",
+                      "index": 1,
+                      "text": "☀️📤 Export Solaire"
+                    }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 17
+          },
+          "id": 13,
+          "options": {
+            "alignValue": "left",
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "mergeValues": true,
+            "rowHeight": 0.9,
+            "showValue": "auto",
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "11.1.5",
+          "targets": [
+            {
+              "datasource": {
+                "type": "influxdb",
+                "uid": "InfluxDB_IoT"
+              },
+              "query": "from(bucket: \"energy_management\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"datacenter_optimization\")\n  |> filter(fn: (r) => r._field == \"efficiency_score\") \n  |> last()\n  |> map(fn: (r) => ({\n      _time: r._time,\n      _value: r.mode,\n      _field: \"mode\"\n    }))",
+              "refId": "A"
+            }
+          ],
+          "title": "⚙️ Mode Optimisation",
+          "type": "state-timeline"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "tags": [
+        "datacenter",
+        "energy",
+        "solar",
+        "battery",
+        "iot"
+      ],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-30m",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "",
+      "title": "🏢 Datacenter Energy Management",
+      "uid": "datacenter-energy-3",
+      "version": 3,
+      "weekStart": ""
+    }

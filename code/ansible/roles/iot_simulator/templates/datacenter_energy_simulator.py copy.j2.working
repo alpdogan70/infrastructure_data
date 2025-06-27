@@ -1,0 +1,890 @@
+#!/usr/bin/env python3
+"""
+Datacenter Energy Management Simulator - Enhanced Version
+Simulates a mini datacenter with improved dashboard-ready metrics
+Provides specific metrics for dashboard display like:
+🌞 PRODUCTION SOLAIRE 🔋 BATTERIES ⚡ CONSOMMATION
+"""
+
+import json
+import random
+import time
+import threading
+import paho.mqtt.client as mqtt
+from datetime import datetime, timedelta
+import math
+import logging
+
+# Configuration
+MQTT_BROKER = "{{ mqtt_broker_host }}"
+MQTT_PORT = 1883
+MQTT_USERNAME = "iot"
+MQTT_PASSWORD = "iot123"
+
+# Datacenter configuration optimized for mini datacenter
+DATACENTER_CONFIG = {
+    "max_power_consumption": 8000,   # 8kW max (mini datacenter)
+    "base_power_consumption": 1200,  # 1.2kW base (cooling, network, etc.)
+    "servers": 12,  # Reduced for mini datacenter
+    "server_max_power": 350,  # Watts per server max
+    "server_idle_power": 60,   # Watts per server idle
+    "zones": ["zone_a", "zone_b", "zone_c"]  # 3 zones for consumption breakdown
+}
+
+SOLAR_CONFIG = {
+    "panels": 20,  # 20 panels for mini datacenter
+    "panel_max_power": 400,  # Watts per panel
+    "total_capacity": 8000,  # 8kW total (more realistic for mini DC)
+}
+
+BATTERY_CONFIG = {
+    "capacity": 25000,  # 25kWh total capacity
+    "max_charge_rate": 5000,  # 5kW max charge
+    "max_discharge_rate": 6000,  # 6kW max discharge
+    "efficiency": 0.95,  # 95% round-trip efficiency
+}
+
+class WeatherSimulator:
+    def __init__(self):
+        self.conditions = ["Ensoleillé", "Partiellement nuageux", "Nuageux", "Brumeux"]
+        self.current_condition = "Ensoleillé"
+        
+    def get_weather_status(self):
+        """Weather data optimized for dashboard display"""
+        hour = datetime.now().hour
+        
+        # Weather changes probability
+        if random.random() < 0.1:  # 10% chance to change weather
+            self.current_condition = random.choice(self.conditions)
+        
+        # Temperature with realistic daily cycle
+        base_temp = 20 + 8 * math.sin((hour - 6) * math.pi / 12)
+        temperature = base_temp + random.uniform(-2, 2)
+        
+        # Wind speed
+        wind_speed = random.uniform(5, 25)
+        
+        # Cloud factor affects solar production
+        cloud_factors = {
+            "Ensoleillé": random.uniform(0.9, 1.0),
+            "Partiellement nuageux": random.uniform(0.6, 0.8),
+            "Nuageux": random.uniform(0.3, 0.5),
+            "Brumeux": random.uniform(0.1, 0.3)
+        }
+        
+        return {
+            "condition": self.current_condition,
+            "temperature": round(temperature, 1),
+            "wind_speed": round(wind_speed, 1),
+            "cloud_factor": cloud_factors[self.current_condition],
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+
+class SolarArray:
+    def __init__(self, weather_sim):
+        self.panels = SOLAR_CONFIG["panels"]
+        self.panel_max_power = SOLAR_CONFIG["panel_max_power"]
+        self.total_capacity = SOLAR_CONFIG["total_capacity"]
+        self.weather = weather_sim
+        self.trend_history = []  # For trend calculation
+        
+    def get_solar_production(self):
+        """Calculate solar production with trend indicators"""
+        now = datetime.now()
+        hour = now.hour
+        minute = now.minute
+        
+        # Solar irradiance curve
+        if 6 <= hour <= 18:
+            time_factor = math.sin((hour + minute/60 - 6) * math.pi / 12)
+            time_factor = max(0, time_factor)
+        else:
+            time_factor = 0
+            
+        # Get weather data
+        weather_data = self.weather.get_weather_status()
+        cloud_factor = weather_data["cloud_factor"]
+        
+        # Calculate actual production
+        max_possible = self.total_capacity * time_factor
+        actual_production = max_possible * cloud_factor
+        
+        # Calculate trend (last 3 measurements)
+        self.trend_history.append(actual_production)
+        if len(self.trend_history) > 3:
+            self.trend_history.pop(0)
+            
+        trend = "stable"
+        if len(self.trend_history) >= 2:
+            recent_avg = sum(self.trend_history[-2:]) / 2
+            older_avg = sum(self.trend_history[:-1]) / len(self.trend_history[:-1])
+            if recent_avg > older_avg * 1.1:
+                trend = "increasing"
+            elif recent_avg < older_avg * 0.9:
+                trend = "decreasing"
+        
+        # Dashboard-friendly format
+        production_kw = actual_production / 1000
+        
+        return {
+            "production_kw": round(production_kw, 1),
+            "production_w": round(actual_production, 2),
+            "trend": trend,
+            "efficiency": round(random.uniform(18, 22), 1),
+            "panels_active": self.panels,
+            "weather": weather_data,
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+
+class BatterySystem:
+    def __init__(self):
+        self.capacity = BATTERY_CONFIG["capacity"]
+        self.current_charge = self.capacity * 0.75  # Start at 75%
+        self.max_charge_rate = BATTERY_CONFIG["max_charge_rate"]
+        self.max_discharge_rate = BATTERY_CONFIG["max_discharge_rate"]
+        self.efficiency = BATTERY_CONFIG["efficiency"]
+        self.soc_history = []  # For trend calculation
+        
+    def update_battery(self, power_flow_to_battery, dt_minutes=1):
+        """Update battery state"""
+        dt_hours = dt_minutes / 60.0
+        
+        if power_flow_to_battery > 0:  # Charging
+            actual_charge = min(power_flow_to_battery, self.max_charge_rate)
+            energy_stored = actual_charge * dt_hours * self.efficiency
+            self.current_charge = min(self.capacity, self.current_charge + energy_stored)
+        elif power_flow_to_battery < 0:  # Discharging
+            actual_discharge = min(abs(power_flow_to_battery), self.max_discharge_rate)
+            energy_used = actual_discharge * dt_hours / self.efficiency
+            self.current_charge = max(0, self.current_charge - energy_used)
+            
+    def get_battery_status(self):
+        """Battery status with trend indicators"""
+        soc = (self.current_charge / self.capacity) * 100
+        
+        # Calculate trend
+        self.soc_history.append(soc)
+        if len(self.soc_history) > 5:
+            self.soc_history.pop(0)
+            
+        trend = "stable"
+        if len(self.soc_history) >= 3:
+            recent_avg = sum(self.soc_history[-2:]) / 2
+            older_avg = sum(self.soc_history[:-2]) / len(self.soc_history[:-2])
+            if recent_avg > older_avg + 2:
+                trend = "increasing"
+            elif recent_avg < older_avg - 2:
+                trend = "decreasing"
+        
+        return {
+            "charge_level": round(soc, 0),  # Integer percentage for display
+            "trend": trend,
+            "current_charge_kwh": round(self.current_charge / 1000, 1),
+            "capacity_kwh": round(self.capacity / 1000, 1),
+            "health": round(random.uniform(92, 98), 1),
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+
+class DatacenterLoad:
+    def __init__(self):
+        self.servers = DATACENTER_CONFIG["servers"]
+        self.zones = DATACENTER_CONFIG["zones"]
+        self.server_loads = [random.uniform(0.3, 0.7) for _ in range(self.servers)]
+        self.base_load = DATACENTER_CONFIG["base_power_consumption"]
+        self.consumption_history = []
+        
+    def get_zone_consumption(self):
+        """Get consumption by zones for infrastructure map"""
+        servers_per_zone = self.servers // len(self.zones)
+        zone_consumptions = {}
+        
+        for i, zone in enumerate(self.zones):
+            start_idx = i * servers_per_zone
+            end_idx = start_idx + servers_per_zone
+            zone_servers = self.server_loads[start_idx:end_idx]
+            
+            # Calculate power for this zone
+            zone_power = 0
+            for load in zone_servers:
+                idle_power = DATACENTER_CONFIG["server_idle_power"]
+                max_power = DATACENTER_CONFIG["server_max_power"]
+                zone_power += idle_power + (max_power - idle_power) * load
+            
+            # Add infrastructure for this zone
+            zone_power += self.base_load / len(self.zones)
+            
+            zone_consumptions[zone] = round(zone_power / 1000, 1)  # Convert to kW
+            
+        return zone_consumptions
+        
+    def update_workload(self):
+        """Update server workloads with realistic patterns"""
+        hour = datetime.now().hour
+        
+        # Business hours pattern
+        if 8 <= hour <= 18:
+            base_utilization = random.uniform(0.6, 0.9)
+        elif 19 <= hour <= 23:
+            base_utilization = random.uniform(0.4, 0.7)
+        else:
+            base_utilization = random.uniform(0.2, 0.5)
+            
+        # Update with smooth transitions
+        for i in range(self.servers):
+            target_load = base_utilization + random.uniform(-0.2, 0.2)
+            target_load = max(0.1, min(1.0, target_load))
+            self.server_loads[i] = self.server_loads[i] * 0.8 + target_load * 0.2
+            
+    def get_power_consumption(self):
+        """Get power consumption with trend"""
+        self.update_workload()
+        
+        # Calculate total consumption
+        server_power = 0
+        for load in self.server_loads:
+            idle_power = DATACENTER_CONFIG["server_idle_power"]
+            max_power = DATACENTER_CONFIG["server_max_power"]
+            server_power += idle_power + (max_power - idle_power) * load
+            
+        infrastructure_power = self.base_load
+        total_consumption = server_power + infrastructure_power
+        
+        # Calculate trend
+        consumption_kw = total_consumption / 1000
+        self.consumption_history.append(consumption_kw)
+        if len(self.consumption_history) > 4:
+            self.consumption_history.pop(0)
+            
+        trend = "stable"
+        if len(self.consumption_history) >= 3:
+            recent_avg = sum(self.consumption_history[-2:]) / 2
+            older_avg = sum(self.consumption_history[:-2]) / len(self.consumption_history[:-2])
+            if recent_avg > older_avg * 1.05:
+                trend = "increasing"
+            elif recent_avg < older_avg * 0.95:
+                trend = "decreasing"
+        
+        # Get zone breakdown
+        zone_consumption = self.get_zone_consumption()
+        
+        return {
+            "total_consumption_kw": round(consumption_kw, 1),
+            "trend": trend,
+            "zone_consumption": zone_consumption,
+            "active_servers": sum(1 for load in self.server_loads if load > 0.3),
+            "avg_cpu_utilization": round(sum(self.server_loads) / len(self.server_loads) * 100, 1),
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+
+class DashboardMetrics:
+    def __init__(self, solar_array, battery_system, datacenter_load):
+        self.solar = solar_array
+        self.battery = battery_system
+        self.datacenter = datacenter_load
+        
+    def get_dashboard_summary(self):
+        """Generate dashboard-ready summary metrics"""
+        solar_data = self.solar.get_solar_production()
+        battery_data = self.battery.get_battery_status()
+        consumption_data = self.datacenter.get_power_consumption()
+        weather_data = self.solar.weather.get_weather_status()
+        
+        # Trend symbols
+        trend_symbols = {
+            "increasing": "↗️",
+            "decreasing": "↘️",
+            "stable": "→"
+        }
+        
+        return {
+            "header": {
+                "solar_production_kw": solar_data["production_kw"],
+                "solar_trend": trend_symbols.get(solar_data["trend"], "→"),
+                "battery_level": battery_data["charge_level"],
+                "battery_trend": trend_symbols.get(battery_data["trend"], "→"),
+                "consumption_kw": consumption_data["total_consumption_kw"],
+                "consumption_trend": trend_symbols.get(consumption_data["trend"], "→")
+            },
+            "infrastructure_map": {
+                "weather_condition": weather_data["condition"],
+                "temperature": weather_data["temperature"],
+                "wind_speed": weather_data["wind_speed"],
+                "zone_consumption": consumption_data["zone_consumption"]
+            },
+            "detailed_metrics": {
+                "solar": solar_data,
+                "battery": battery_data,
+                "consumption": consumption_data,
+                "weather": weather_data
+            },
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+
+class DatacenterEnergySimulator:
+    def __init__(self):
+        self.weather_sim = WeatherSimulator()
+        self.solar_array = SolarArray(self.weather_sim)
+        self.battery_system = BatterySystem()
+        self.datacenter_load = DatacenterLoad()
+        self.dashboard = DashboardMetrics(
+            self.solar_array, self.battery_system, self.datacenter_load
+        )
+        
+        self.client = mqtt.Client(client_id=f"datacenter_energy_{random.randint(1000,9999)}")
+        self.client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+        self.client.on_connect = self.on_connect
+        self.running = True
+        
+    def on_connect(self, client, userdata, flags, rc):
+        if rc == 0:
+            print(f"🏢 Datacenter Energy Simulator connected to MQTT broker")
+        else:
+            print(f"❌ Failed to connect, return code {rc}")
+    
+    def publish_dashboard_data(self):
+        """Publish dashboard-ready data"""
+        while self.running:
+            try:
+                data = self.dashboard.get_dashboard_summary()
+                
+                # Main dashboard topic
+                topic = "energy/datacenter/dashboard"
+                self.client.publish(topic, json.dumps(data))
+                
+                # Individual component topics for flexibility
+                self.client.publish("energy/solar/datacenter/summary", 
+                                  json.dumps(data["detailed_metrics"]["solar"]))
+                self.client.publish("energy/battery/datacenter/summary", 
+                                  json.dumps(data["detailed_metrics"]["battery"]))
+                self.client.publish("energy/consumption/datacenter/summary", 
+                                  json.dumps(data["detailed_metrics"]["consumption"]))
+                self.client.publish("weather/datacenter/current", 
+                                  json.dumps(data["detailed_metrics"]["weather"]))
+                
+                # Console output matching desired format
+                header = data["header"]
+                infra = data["infrastructure_map"]
+                
+                print(f"┌─────────────────────────────────────────────────────────────┐")
+                print(f"│ 🌞 PRODUCTION SOLAIRE   🔋 BATTERIES      ⚡ CONSOMMATION │")
+                print(f"│    {header['solar_production_kw']} kW {header['solar_trend']}              {header['battery_level']}% {header['battery_trend']}            {header['consumption_kw']} kW {header['consumption_trend']}     │")
+                print(f"└─────────────────────────────────────────────────────────────┘")
+                print(f"┌─ INFRASTRUCTURE MAP ─────────────────────────────────────────┐")
+                print(f"│ 🌤️ Météo: {infra['weather_condition']} 🌡️ Temp: {infra['temperature']}°C 💨 Vent: {infra['wind_speed']}km/h │")
+                print(f"│                                                               │")
+                print(f"│ Consommation: {infra['zone_consumption']['zone_a']}kW  {infra['zone_consumption']['zone_b']}kW  {infra['zone_consumption']['zone_c']}kW                     │")
+                print(f"└───────────────────────────────────────────────────────────────┘")
+                print()
+                
+                time.sleep(30)
+            except Exception as e:
+                print(f"❌ Error in dashboard publishing: {e}")
+                time.sleep(30)
+    
+    def energy_management_loop(self):
+        """Simplified energy management for battery updates"""
+        while self.running:
+            try:
+                solar_data = self.solar_array.get_solar_production()
+                consumption_data = self.datacenter_load.get_power_consumption()
+                
+                solar_w = solar_data["production_w"]
+                consumption_w = consumption_data["total_consumption_kw"] * 1000
+                
+                net_power = solar_w - consumption_w
+                
+                # Simple battery management
+                if net_power > 0:  # Surplus
+                    self.battery_system.update_battery(min(net_power, 3000))  # Charge
+                else:  # Deficit
+                    self.battery_system.update_battery(max(net_power, -2000))  # Discharge
+                
+                time.sleep(60)  # Update every minute
+            except Exception as e:
+                print(f"❌ Error in energy management: {e}")
+                time.sleep(60)
+    
+    def run(self):
+        """Main simulator run method"""
+        print("🏢 Starting Enhanced Datacenter Energy Simulator...")
+        print(f"📊 Mini Datacenter: {DATACENTER_CONFIG['servers']} servers, {SOLAR_CONFIG['total_capacity']/1000}kW solar, {BATTERY_CONFIG['capacity']/1000}kWh battery")
+        
+        try:
+            self.client.connect(MQTT_BROKER, MQTT_PORT, 60)
+            self.client.loop_start()
+        except Exception as e:
+            print(f"❌ Failed to connect to MQTT broker: {e}")
+            return
+        
+        time.sleep(2)
+        
+        # Start simulation threads
+        threads = [
+            threading.Thread(target=self.publish_dashboard_data, daemon=True),
+            threading.Thread(target=self.energy_management_loop, daemon=True)
+        ]
+        
+        for thread in threads:
+            thread.start()
+        
+        try:
+            while self.running:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n🛑 Shutting down datacenter energy simulator...")
+            self.running = False
+        
+        self.client.loop_stop()
+        self.client.disconnect()
+
+if __name__ == "__main__":
+    simulator = DatacenterEnergySimulator()
+    simulator.run()
+
+# #!/usr/bin/env python3
+# """
+# Datacenter Energy Management Simulator
+# Simulates a mini datacenter with solar panels, batteries, grid connection
+# and intelligent energy optimization based on solar production and workload
+# """
+
+# import json
+# import random
+# import time
+# import threading
+# import paho.mqtt.client as mqtt
+# from datetime import datetime, timedelta
+# import math
+# import logging
+
+# # Configuration
+# MQTT_BROKER = "{{ mqtt_broker_host }}"
+# MQTT_PORT = 1883
+# MQTT_USERNAME = "iot"
+# MQTT_PASSWORD = "iot123"
+
+# # Datacenter configuration
+# DATACENTER_CONFIG = {
+#     "max_power_consumption": 15000,  # 15kW max
+#     "base_power_consumption": 3000,  # 3kW base (cooling, network, etc.)
+#     "servers": 24,  # Number of servers
+#     "server_max_power": 400,  # Watts per server max
+#     "server_idle_power": 80,   # Watts per server idle
+# }
+
+# SOLAR_CONFIG = {
+#     "panels": 40,  # Number of panels
+#     "panel_max_power": 400,  # Watts per panel
+#     "total_capacity": 16000,  # 16kW total
+# }
+
+# BATTERY_CONFIG = {
+#     "capacity": 50000,  # 50kWh total capacity
+#     "max_charge_rate": 10000,  # 10kW max charge
+#     "max_discharge_rate": 12000,  # 12kW max discharge
+#     "efficiency": 0.95,  # 95% round-trip efficiency
+# }
+
+# class SolarArray:
+#     def __init__(self):
+#         self.panels = SOLAR_CONFIG["panels"]
+#         self.panel_max_power = SOLAR_CONFIG["panel_max_power"]
+#         self.total_capacity = SOLAR_CONFIG["total_capacity"]
+        
+#     def get_solar_production(self):
+#         """Calculate solar production based on time and weather"""
+#         now = datetime.now()
+#         hour = now.hour
+#         minute = now.minute
+        
+#         # Solar irradiance curve (realistic)
+#         if 6 <= hour <= 18:
+#             # Peak at noon (12:00)
+#             time_factor = math.sin((hour + minute/60 - 6) * math.pi / 12)
+#             time_factor = max(0, time_factor)
+#         else:
+#             time_factor = 0
+            
+#         # Weather variability (clouds, etc.)
+#         cloud_factor = random.uniform(0.3, 1.0)
+        
+#         # Seasonal factor (simplified)
+#         month = now.month
+#         seasonal_factor = 0.6 + 0.4 * math.sin((month - 3) * math.pi / 6)
+        
+#         # Calculate actual production
+#         max_possible = self.total_capacity * time_factor * seasonal_factor
+#         actual_production = max_possible * cloud_factor
+        
+#         # Individual panel data
+#         avg_per_panel = actual_production / self.panels if self.panels > 0 else 0
+        
+#         return {
+#             "total_production": round(actual_production, 2),
+#             "avg_per_panel": round(avg_per_panel, 2),
+#             "panels_active": self.panels,
+#             "irradiance": round(time_factor * cloud_factor * 1000, 2),  # W/m²
+#             "efficiency": round(random.uniform(18, 22), 1),
+#             "weather_factor": round(cloud_factor, 3),
+#             "timestamp": datetime.utcnow().isoformat() + "Z"
+#         }
+
+# class BatterySystem:
+#     def __init__(self):
+#         self.capacity = BATTERY_CONFIG["capacity"]
+#         self.current_charge = self.capacity * 0.7  # Start at 70%
+#         self.max_charge_rate = BATTERY_CONFIG["max_charge_rate"]
+#         self.max_discharge_rate = BATTERY_CONFIG["max_discharge_rate"]
+#         self.efficiency = BATTERY_CONFIG["efficiency"]
+#         self.temperature = 25.0
+        
+#     def update_battery(self, power_flow_to_battery, dt_minutes=1):
+#         """Update battery state based on power flow"""
+#         dt_hours = dt_minutes / 60.0
+        
+#         if power_flow_to_battery > 0:  # Charging
+#             actual_charge = min(power_flow_to_battery, self.max_charge_rate)
+#             energy_stored = actual_charge * dt_hours * self.efficiency
+#             self.current_charge = min(self.capacity, self.current_charge + energy_stored)
+#         elif power_flow_to_battery < 0:  # Discharging
+#             actual_discharge = min(abs(power_flow_to_battery), self.max_discharge_rate)
+#             energy_used = actual_discharge * dt_hours / self.efficiency
+#             self.current_charge = max(0, self.current_charge - energy_used)
+            
+#         # Temperature simulation (affects performance)
+#         ambient_temp = 20 + random.uniform(-5, 10)
+#         if abs(power_flow_to_battery) > 5000:  # High power = more heat
+#             self.temperature += random.uniform(0, 3)
+#         else:
+#             self.temperature = self.temperature * 0.9 + ambient_temp * 0.1
+            
+#         self.temperature = max(15, min(45, self.temperature))  # Realistic range
+        
+#     def get_battery_status(self):
+#         soc = (self.current_charge / self.capacity) * 100
+#         voltage = 48 + (soc - 50) * 0.2  # 38V-58V range
+        
+#         # Health based on temperature and cycles (simplified)
+#         temp_stress = max(0, self.temperature - 35) / 10
+#         health = max(85, 100 - temp_stress * 5)
+        
+#         return {
+#             "charge_level": round(soc, 1),
+#             "current_charge": round(self.current_charge, 2),
+#             "capacity": self.capacity,
+#             "voltage": round(voltage, 2),
+#             "temperature": round(self.temperature, 1),
+#             "health": round(health, 1),
+#             "max_charge_rate": self.max_charge_rate,
+#             "max_discharge_rate": self.max_discharge_rate,
+#             "timestamp": datetime.utcnow().isoformat() + "Z"
+#         }
+
+# class DatacenterLoad:
+#     def __init__(self):
+#         self.servers = DATACENTER_CONFIG["servers"]
+#         self.server_loads = [random.uniform(0.2, 0.8) for _ in range(self.servers)]
+#         self.base_load = DATACENTER_CONFIG["base_power_consumption"]
+#         self.cooling_efficiency = 1.4  # PUE (Power Usage Effectiveness)
+        
+#     def update_workload(self):
+#         """Simulate realistic datacenter workload patterns"""
+#         hour = datetime.now().hour
+        
+#         # Business hours = higher load
+#         if 8 <= hour <= 18:
+#             base_utilization = random.uniform(0.6, 0.9)
+#         elif 19 <= hour <= 23:
+#             base_utilization = random.uniform(0.4, 0.7)
+#         else:  # Night
+#             base_utilization = random.uniform(0.2, 0.5)
+            
+#         # Update server loads with some persistence
+#         for i in range(self.servers):
+#             target_load = base_utilization + random.uniform(-0.2, 0.2)
+#             target_load = max(0.1, min(1.0, target_load))
+#             # Smooth transition
+#             self.server_loads[i] = self.server_loads[i] * 0.8 + target_load * 0.2
+            
+#     def get_power_consumption(self):
+#         """Calculate total datacenter power consumption"""
+#         self.update_workload()
+        
+#         # Server power consumption
+#         server_power = 0
+#         for load in self.server_loads:
+#             idle_power = DATACENTER_CONFIG["server_idle_power"]
+#             max_power = DATACENTER_CONFIG["server_max_power"]
+#             server_power += idle_power + (max_power - idle_power) * load
+            
+#         # Infrastructure power (cooling, networking, etc.)
+#         infrastructure_power = self.base_load
+        
+#         # Cooling power (depends on server load and ambient temperature)
+#         ambient_temp = 25 + random.uniform(-5, 10)
+#         cooling_factor = 1.0 + (ambient_temp - 20) / 30  # More cooling when hot
+#         cooling_power = server_power * (self.cooling_efficiency - 1) * cooling_factor
+        
+#         total_consumption = server_power + infrastructure_power + cooling_power
+        
+#         return {
+#             "total_consumption": round(total_consumption, 2),
+#             "server_consumption": round(server_power, 2),
+#             "cooling_consumption": round(cooling_power, 2),
+#             "infrastructure_consumption": round(infrastructure_power, 2),
+#             "active_servers": sum(1 for load in self.server_loads if load > 0.3),
+#             "avg_cpu_utilization": round(sum(self.server_loads) / len(self.server_loads) * 100, 1),
+#             "pue": round(total_consumption / server_power, 2),
+#             "ambient_temperature": round(ambient_temp, 1),
+#             "timestamp": datetime.utcnow().isoformat() + "Z"
+#         }
+
+# class GridConnection:
+#     def __init__(self):
+#         self.voltage = 400  # 3-phase voltage
+#         self.frequency = 50
+#         self.power_factor = 0.95
+        
+#     def get_grid_status(self):
+#         # Grid parameters with some variability
+#         voltage = self.voltage + random.uniform(-10, 10)
+#         frequency = self.frequency + random.uniform(-0.1, 0.1)
+#         power_factor = self.power_factor + random.uniform(-0.05, 0.02)
+        
+#         # Time-of-use pricing simulation (cents per kWh)
+#         hour = datetime.now().hour
+#         if 7 <= hour <= 9 or 17 <= hour <= 21:  # Peak hours
+#             electricity_price = random.uniform(25, 35)
+#             tariff_type = "peak"
+#         elif 22 <= hour <= 6:  # Off-peak
+#             electricity_price = random.uniform(8, 12)
+#             tariff_type = "off_peak"
+#         else:  # Mid-peak
+#             electricity_price = random.uniform(15, 20)
+#             tariff_type = "mid_peak"
+            
+#         return {
+#             "voltage": round(voltage, 1),
+#             "frequency": round(frequency, 3),
+#             "power_factor": round(power_factor, 3),
+#             "electricity_price": round(electricity_price, 2),
+#             "tariff_type": tariff_type,
+#             "grid_quality": "excellent" if abs(voltage - 400) < 5 else "good",
+#             "timestamp": datetime.utcnow().isoformat() + "Z"
+#         }
+
+# class EnergyOptimizer:
+#     def __init__(self, solar_array, battery_system, datacenter_load, grid_connection):
+#         self.solar = solar_array
+#         self.battery = battery_system
+#         self.datacenter = datacenter_load
+#         self.grid = grid_connection
+        
+#     def optimize_energy_flow(self):
+#         """Intelligent energy management algorithm"""
+#         # Get current status
+#         solar_data = self.solar.get_solar_production()
+#         consumption_data = self.datacenter.get_power_consumption()
+#         battery_data = self.battery.get_battery_status()
+#         grid_data = self.grid.get_grid_status()
+        
+#         solar_production = solar_data["total_production"]
+#         total_consumption = consumption_data["total_consumption"]
+#         battery_soc = battery_data["charge_level"]
+#         electricity_price = grid_data["electricity_price"]
+        
+#         # Energy flow calculation
+#         net_solar = solar_production - total_consumption
+        
+#         # Decision algorithm
+#         if net_solar > 0:  # Solar surplus
+#             if battery_soc < 90:  # Charge battery if not full
+#                 battery_power = min(net_solar, self.battery.max_charge_rate)
+#                 grid_power = net_solar - battery_power  # Export remainder
+#                 mode = "solar_charging"
+#             else:  # Battery full, export all surplus
+#                 battery_power = 0
+#                 grid_power = net_solar
+#                 mode = "solar_export"
+#         else:  # Solar deficit
+#             deficit = abs(net_solar)
+            
+#             # Check if we should use battery or grid
+#             if battery_soc > 20 and (electricity_price > 20 or grid_data["tariff_type"] == "peak"):
+#                 # Use battery during expensive electricity
+#                 battery_discharge = min(deficit, self.battery.max_discharge_rate, 
+#                                       self.battery.current_charge * 0.8)  # Don't fully discharge
+#                 battery_power = -battery_discharge
+#                 grid_power = -(deficit - battery_discharge)  # Import remainder
+#                 mode = "battery_discharge"
+#             else:
+#                 # Use grid (cheap electricity or low battery)
+#                 battery_power = 0
+#                 grid_power = -deficit
+#                 mode = "grid_import"
+                
+#         # Update battery state
+#         self.battery.update_battery(battery_power)
+        
+#         # Calculate costs and savings
+#         grid_cost = max(0, -grid_power) * electricity_price / 100  # Cost per minute
+#         grid_revenue = max(0, grid_power) * electricity_price * 0.8 / 100  # Feed-in tariff
+        
+#         return {
+#             "mode": mode,
+#             "solar_production": solar_production,
+#             "total_consumption": total_consumption,
+#             "battery_power": round(battery_power, 2),
+#             "grid_power": round(grid_power, 2),
+#             "battery_soc": battery_soc,
+#             "grid_cost_per_hour": round(grid_cost * 60, 3),
+#             "grid_revenue_per_hour": round(grid_revenue * 60, 3),
+#             "net_cost_per_hour": round((grid_cost - grid_revenue) * 60, 3),
+#             "efficiency_score": round(min(100, (solar_production / total_consumption) * 100), 1),
+#             "timestamp": datetime.utcnow().isoformat() + "Z"
+#         }
+
+# class DatacenterEnergySimulator:
+#     def __init__(self):
+#         self.solar_array = SolarArray()
+#         self.battery_system = BatterySystem()
+#         self.datacenter_load = DatacenterLoad()
+#         self.grid_connection = GridConnection()
+#         self.optimizer = EnergyOptimizer(
+#             self.solar_array, self.battery_system, 
+#             self.datacenter_load, self.grid_connection
+#         )
+        
+#         self.client = mqtt.Client(client_id=f"datacenter_energy_{random.randint(1000,9999)}")
+#         self.client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+#         self.client.on_connect = self.on_connect
+#         self.running = True
+        
+#         # Statistics
+#         self.daily_stats = {
+#             "solar_generated": 0,
+#             "energy_consumed": 0,
+#             "grid_imported": 0,
+#             "grid_exported": 0,
+#             "cost_saved": 0
+#         }
+        
+#     def on_connect(self, client, userdata, flags, rc):
+#         if rc == 0:
+#             print(f"Datacenter Energy Simulator connected to MQTT broker")
+#         else:
+#             print(f"Failed to connect, return code {rc}")
+    
+#     def publish_solar_data(self):
+#         """Publish solar production data"""
+#         while self.running:
+#             try:
+#                 data = self.solar_array.get_solar_production()
+#                 topic = "energy/solar/datacenter/production"
+#                 self.client.publish(topic, json.dumps(data))
+#                 print(f"☀️  Solar: {data['total_production']}W ({data['avg_per_panel']}W/panel)")
+#                 time.sleep(30)
+#             except Exception as e:
+#                 print(f"Error in solar simulation: {e}")
+#                 time.sleep(30)
+    
+#     def publish_battery_data(self):
+#         """Publish battery status"""
+#         while self.running:
+#             try:
+#                 data = self.battery_system.get_battery_status()
+#                 topic = "energy/battery/datacenter/status"
+#                 self.client.publish(topic, json.dumps(data))
+#                 print(f"🔋 Battery: {data['charge_level']}% ({data['current_charge']:.1f}kWh)")
+#                 time.sleep(20)
+#             except Exception as e:
+#                 print(f"Error in battery simulation: {e}")
+#                 time.sleep(20)
+    
+#     def publish_consumption_data(self):
+#         """Publish datacenter consumption"""
+#         while self.running:
+#             try:
+#                 data = self.datacenter_load.get_power_consumption()
+#                 topic = "energy/consumption/datacenter/power"
+#                 self.client.publish(topic, json.dumps(data))
+#                 print(f"🖥️  Load: {data['total_consumption']}W (PUE: {data['pue']}, CPU: {data['avg_cpu_utilization']}%)")
+#                 time.sleep(25)
+#             except Exception as e:
+#                 print(f"Error in consumption simulation: {e}")
+#                 time.sleep(25)
+    
+#     def publish_grid_data(self):
+#         """Publish grid connection status"""
+#         while self.running:
+#             try:
+#                 data = self.grid_connection.get_grid_status()
+#                 topic = "energy/grid/datacenter/status"
+#                 self.client.publish(topic, json.dumps(data))
+#                 print(f"⚡ Grid: {data['voltage']}V, {data['electricity_price']}¢/kWh ({data['tariff_type']})")
+#                 time.sleep(35)
+#             except Exception as e:
+#                 print(f"Error in grid simulation: {e}")
+#                 time.sleep(35)
+    
+#     def publish_optimization_data(self):
+#         """Publish energy optimization decisions"""
+#         while self.running:
+#             try:
+#                 data = self.optimizer.optimize_energy_flow()
+#                 topic = "energy/optimization/datacenter/decision"
+#                 self.client.publish(topic, json.dumps(data))
+                
+#                 mode_emoji = {
+#                     "solar_charging": "☀️🔋",
+#                     "solar_export": "☀️📤",
+#                     "battery_discharge": "🔋📤",
+#                     "grid_import": "⚡📥"
+#                 }
+                
+#                 emoji = mode_emoji.get(data['mode'], "⚙️")
+#                 print(f"{emoji} Mode: {data['mode']}, Grid: {data['grid_power']:+.0f}W, Cost: ${data['net_cost_per_hour']:.3f}/h")
+#                 time.sleep(15)
+#             except Exception as e:
+#                 print(f"Error in optimization: {e}")
+#                 time.sleep(15)
+    
+#     def run(self):
+#         """Main simulator loop"""
+#         print("🏢 Starting Datacenter Energy Management Simulator...")
+#         print(f"📊 Config: {DATACENTER_CONFIG['servers']} servers, {SOLAR_CONFIG['total_capacity']}W solar, {BATTERY_CONFIG['capacity']}Wh battery")
+        
+#         try:
+#             self.client.connect(MQTT_BROKER, MQTT_PORT, 60)
+#             self.client.loop_start()
+#         except Exception as e:
+#             print(f"Failed to connect to MQTT broker: {e}")
+#             return
+        
+#         time.sleep(2)
+        
+#         # Start all simulation threads
+#         threads = [
+#             threading.Thread(target=self.publish_solar_data, daemon=True),
+#             threading.Thread(target=self.publish_battery_data, daemon=True),
+#             threading.Thread(target=self.publish_consumption_data, daemon=True),
+#             threading.Thread(target=self.publish_grid_data, daemon=True),
+#             threading.Thread(target=self.publish_optimization_data, daemon=True)
+#         ]
+        
+#         for thread in threads:
+#             thread.start()
+        
+#         try:
+#             while self.running:
+#                 time.sleep(1)
+#         except KeyboardInterrupt:
+#             print("\n🛑 Shutting down datacenter energy simulator...")
+#             self.running = False
+        
+#         self.client.loop_stop()
+#         self.client.disconnect()
+
+# if __name__ == "__main__":
+#     simulator = DatacenterEnergySimulator()
+#     simulator.run()

@@ -1,0 +1,51 @@
+---
+- name: Wait for Consul to be ready
+  wait_for:
+    port: 8500
+    delay: 5
+
+- name: Register InfluxDB in Consul
+  copy:
+    content: |
+      {
+        "services": [
+          {
+            "name": "influxdb",
+            "tags": ["database", "timeseries", "iot"],
+            "address": "{{ ansible_default_ipv4.address }}",
+            "port": 8086,
+            "check": {
+              "http": "http://{{ ansible_default_ipv4.address }}:8086/health",
+              "interval": "10s",
+              "timeout": "5s"
+            }
+          },
+          {
+            "name": "influxdb",
+            "id": "influxdb",
+            "port": 8086,
+            "tags": [
+              "traefik.enable=true",
+              "traefik.http.routers.router-influxdb.entrypoints=http,https",
+              "traefik.http.routers.router-influxdb.rule=Host(`influx.tanerinfo.eu`)",
+              "traefik.http.routers.router-influxdb.service=influxdb",
+              "traefik.http.routers.router-influxdb.middlewares=secure_headers@file,to_https@file",
+              "traefik.http.routers.router-influxdb.tls.certresolver=certs_gen"
+            ],
+            "check": {
+              "http": "http://{{ ansible_default_ipv4.address }}:8086/health",
+              "interval": "10s"
+            }
+          }
+        ]
+      }
+    dest: /etc/consul.d/influxdb.json
+    owner: consul
+    group: consul
+    mode: '0644'
+  notify: reload consul
+
+- name: Reload consul
+  systemd:
+    name: consul
+    state: reloaded

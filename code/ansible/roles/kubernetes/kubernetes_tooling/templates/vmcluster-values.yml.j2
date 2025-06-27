@@ -1,0 +1,36 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMCluster
+metadata:
+  name: {{ kubernetes_helm_vmcluster_name }}
+  namespace: {{ kubernetes_helm_vmcluster_namespace }}
+spec:
+  retentionPeriod: "{{ kubernetes_helm_vmcluster_vmstorage_retention }}"
+  replicationFactor: 2
+  vmstorage:
+    replicaCount: {{ kubernetes_helm_vmcluster_vmstorage_replicas }}
+    storageDataPath: "/vm-data"
+    storage:
+      volumeClaimTemplate:
+        metadata:
+          annotations:
+            operator.victoriametrics.com/pvc-allow-volume-expansion: "false"
+        spec:
+          storageClassName: {{ kubernetes_helm_vmcluster_vmstorage_storageclass }}
+          resources:
+            requests:
+              storage: {{ kubernetes_helm_vmcluster_vmstorage_size }}
+  vmselect:
+    replicaCount: {{ kubernetes_helm_vmcluster_vmselect_replicas }}
+    cacheMountPath: "/select-cache"
+    storage:
+      volumeClaimTemplate:
+        metadata:
+          annotations:
+            operator.victoriametrics.com/pvc-allow-volume-expansion: "false"
+        spec:
+          storageClassName: {{ kubernetes_helm_vmcluster_vmselect_storageclass }}
+          resources:
+            requests:
+              storage: {{ kubernetes_helm_vmcluster_vmselect_size }}
+  vminsert:
+    replicaCount: {{ kubernetes_helm_vmcluster_vminsert_replicas }}

@@ -1,0 +1,18 @@
+secret:
+  enabled: true
+  name: cinder-csi-cloud-config
+  create: true
+  hostMount: false
+  filename: cloud.conf
+  data:
+    cloud.conf: |-
+      [Global]
+      username = {{ kubernetes_openstack_username }}
+      password = {{ kubernetes_openstack_password }}
+      domain-name = {{ kubernetes_openstack_domain_name }}
+      auth-url = {{ kubernetes_openstack_auth_url }}
+      tenant-id = {{ kubernetes_openstack_tenant_id }}
+      region = {{ kubernetes_openstack_region }}
+csi:
+  provisioner:
+    topology: "false"

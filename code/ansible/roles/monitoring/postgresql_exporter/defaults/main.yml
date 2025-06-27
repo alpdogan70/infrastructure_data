@@ -1,0 +1,5 @@
+---
+# defaults file for roles/monitoring/postgresql_exporter
+postgresql_exporter_version: 0.15.0
+postgresql_exporter_binary_path: /usr/local/bin
+postgresql_exporter_user: postgres

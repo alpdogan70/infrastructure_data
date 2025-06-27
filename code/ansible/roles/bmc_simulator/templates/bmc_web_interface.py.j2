@@ -1,0 +1,401 @@
+#!/usr/bin/env python3
+"""
+BMC Web Interface Simulator - Simplified Version
+File: /ansible/roles/bmc_simulator/templates/bmc_web_interface.py.j2
+"""
+
+from flask import Flask, render_template_string, request, jsonify
+import json
+import paho.mqtt.client as mqtt
+import threading
+import time
+from datetime import datetime
+
+# Configuration
+MQTT_BROKER = "{{ mqtt_broker_host }}"
+MQTT_PORT = 1883
+MQTT_USERNAME = "iot"
+MQTT_PASSWORD = "iot123"
+
+app = Flask(__name__)
+
+class BMCWebInterface:
+    def __init__(self):
+        self.mqtt_client = mqtt.Client(client_id="bmc_web_interface")
+        self.mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+        self.mqtt_client.on_connect = self.on_connect
+        self.mqtt_client.on_message = self.on_message
+        
+        # Cached data from MQTT
+        self.servers_data = {}
+        self.bmc_status = {}
+        self.energy_data = {}
+        
+    def on_connect(self, client, userdata, flags, rc):
+        if rc == 0:
+            print("🌐 BMC Web Interface connected to MQTT")
+            client.subscribe("bmc/server/+/sensors")
+            client.subscribe("bmc/server/+/power")
+            client.subscribe("bmc/system/status")
+            client.subscribe("energy/battery/datacenter/status")
+            client.subscribe("energy/solar/datacenter/production")
+            client.subscribe("energy/consumption/datacenter/metrics")
+        else:
+            print(f"❌ Web interface failed to connect to MQTT: {rc}")
+    
+    def on_message(self, client, userdata, msg):
+        try:
+            topic = msg.topic
+            payload = json.loads(msg.payload.decode())
+            
+            if topic.startswith("bmc/server/") and topic.endswith("/sensors"):
+                server_id = topic.split("/")[2]
+                self.servers_data[server_id] = payload
+            elif topic.startswith("bmc/server/") and topic.endswith("/power"):
+                server_id = topic.split("/")[2]
+                if server_id not in self.servers_data:
+                    self.servers_data[server_id] = {}
+                self.servers_data[server_id].update(payload)
+            elif topic == "bmc/system/status":
+                self.bmc_status = payload
+            elif topic == "energy/battery/datacenter/status":
+                self.energy_data["battery"] = payload
+            elif topic == "energy/solar/datacenter/production":
+                self.energy_data["solar"] = payload
+            elif topic == "energy/consumption/datacenter/metrics":
+                self.energy_data["consumption"] = payload
+                
+        except Exception as e:
+            print(f"❌ Error processing web interface message: {e}")
+    
+    def send_command(self, server_id, action, force=False):
+        """Send command to BMC via MQTT"""
+        command = {"action": action, "force": force, "timestamp": datetime.utcnow().isoformat() + "Z"}
+        
+        if server_id == "all":
+            topic = "bmc/datacenter/command"
+        else:
+            topic = f"bmc/server/{server_id}/command"
+        
+        self.mqtt_client.publish(topic, json.dumps(command))
+        return True
+
+# Global BMC interface instance
+bmc_interface = BMCWebInterface()
+
+@app.route('/')
+def dashboard():
+    """Main BMC dashboard"""
+    return BMC_WEB_HTML
+
+@app.route('/api/servers')
+def api_servers():
+    """API endpoint for server data"""
+    return jsonify(bmc_interface.servers_data)
+
+@app.route('/api/bmc/status')
+def api_bmc_status():
+    """API endpoint for BMC status"""
+    return jsonify(bmc_interface.bmc_status)
+
+@app.route('/api/energy')
+def api_energy():
+    """API endpoint for energy data"""
+    return jsonify(bmc_interface.energy_data)
+
+@app.route('/api/server/<server_id>/power/<action>', methods=['POST'])
+def api_server_power(server_id, action):
+    """API endpoint for server power control"""
+    force = request.json.get('force', False) if request.json else False
+    
+    valid_actions = ['power_on', 'power_off', 'reset', 'status']
+    if action not in valid_actions:
+        return jsonify({"error": "Invalid action"}), 400
+    
+    success = bmc_interface.send_command(server_id, action, force)
+    return jsonify({"success": success, "server_id": server_id, "action": action})
+
+@app.route('/api/datacenter/<action>', methods=['POST'])
+def api_datacenter_control(action):
+    """API endpoint for datacenter-wide control"""
+    valid_actions = ['shutdown_all', 'start_all', 'status_all']
+    if action not in valid_actions:
+        return jsonify({"error": "Invalid action"}), 400
+    
+    success = bmc_interface.send_command("all", action)
+    return jsonify({"success": success, "action": action})
+
+# Static HTML (no Jinja2 variables)
+BMC_WEB_HTML = '''<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BMC Aspeed AST2600 - Datacenter Management</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a1a; color: #fff; min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            padding: 1rem 2rem; border-bottom: 3px solid #3498db;
+        }
+        .header h1 { font-size: 1.8rem; display: flex; align-items: center; }
+        .header .status { margin-left: auto; font-size: 0.9rem; }
+        .container { padding: 2rem; max-width: 1400px; margin: 0 auto; }
+        
+        .card {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            border-radius: 10px; padding: 1.5rem; border: 1px solid #34495e;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); margin-bottom: 2rem;
+        }
+        .card h3 { margin-bottom: 1rem; color: #3498db; font-size: 1.2rem; }
+        
+        .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+        .metric {
+            text-align: center; padding: 1rem; background: rgba(52, 73, 94, 0.5);
+            border-radius: 8px; border: 1px solid #34495e;
+        }
+        .metric-value { font-size: 2rem; font-weight: bold; color: #3498db; }
+        .metric-label { font-size: 0.9rem; color: #bdc3c7; margin-top: 0.5rem; }
+        
+        .server-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+        .server-card {
+            background: #34495e; border-radius: 8px; padding: 1rem;
+            border-left: 4px solid #3498db; transition: all 0.3s;
+        }
+        .server-card.online { border-left-color: #27ae60; }
+        .server-card.offline { border-left-color: #e74c3c; }
+        
+        .server-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .server-name { font-weight: bold; font-size: 1.1rem; }
+        .power-status {
+            padding: 0.3rem 0.8rem; border-radius: 20px; font-size: 0.8rem; font-weight: bold;
+        }
+        .power-status.on { background: #27ae60; }
+        .power-status.off { background: #e74c3c; }
+        
+        .controls { margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .btn {
+            padding: 0.5rem 1rem; border: none; border-radius: 5px; cursor: pointer;
+            font-size: 0.9rem; transition: all 0.3s; color: white;
+        }
+        .btn-power { background: #27ae60; }
+        .btn-stop { background: #e74c3c; }
+        .btn-reset { background: #f39c12; }
+        
+        .datacenter-controls { text-align: center; margin: 2rem 0; }
+        .datacenter-controls .btn { margin: 0 0.5rem; padding: 0.8rem 2rem; font-size: 1rem; }
+        
+        .loading { text-align: center; padding: 2rem; color: #bdc3c7; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🖥️ BMC Aspeed AST2600 - Datacenter Management</h1>
+        <div class="status">
+            <span>🔗 Connected</span> | 
+            <span id="battery-status">🔋 --</span> |
+            <span id="current-time">🕒 --</span>
+        </div>
+    </div>
+    
+    <div class="container">
+        <!-- Energy Overview -->
+        <div class="card">
+            <h3>⚡ Energy Management Overview</h3>
+            <div class="metrics">
+                <div class="metric">
+                    <div class="metric-value" id="battery-level">--</div>
+                    <div class="metric-label">🔋 Battery Level (%)</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" id="solar-production">--</div>
+                    <div class="metric-label">☀️ Solar Production (kW)</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" id="total-consumption">--</div>
+                    <div class="metric-label">⚡ Total Consumption (kW)</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" id="servers-online">--</div>
+                    <div class="metric-label">🖥️ Servers Online</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Datacenter Controls -->
+        <div class="datacenter-controls">
+            <h3>🏢 Datacenter Controls</h3>
+            <button class="btn btn-power" onclick="datacenterControl('start_all')">🚀 Start All</button>
+            <button class="btn btn-stop" onclick="datacenterControl('shutdown_all')">🛑 Shutdown All</button>
+            <button class="btn btn-reset" onclick="refreshData()">🔄 Refresh</button>
+        </div>
+        
+        <!-- BMC Status -->
+        <div class="card">
+            <h3>🖥️ BMC System Status</h3>
+            <div class="metrics">
+                <div class="metric">
+                    <div class="metric-value" id="bmc-cpu">--</div>
+                    <div class="metric-label">CPU Usage (%)</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" id="bmc-memory">--</div>
+                    <div class="metric-label">Memory Usage (%)</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" id="bmc-temp">--</div>
+                    <div class="metric-label">Temperature (°C)</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Server Management -->
+        <div class="card">
+            <h3>🖥️ Server Management</h3>
+            <div id="server-grid" class="server-grid">
+                <div class="loading">Loading server data...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function updateTime() {
+            document.getElementById('current-time').textContent = '🕒 ' + new Date().toLocaleTimeString();
+        }
+        
+        function loadData() {
+            // Load server data
+            fetch('/api/servers')
+                .then(response => response.json())
+                .then(data => updateServerDisplay(data))
+                .catch(error => console.log('Error loading servers:', error));
+            
+            // Load BMC status  
+            fetch('/api/bmc/status')
+                .then(response => response.json())
+                .then(data => updateBMCDisplay(data))
+                .catch(error => console.log('Error loading BMC status:', error));
+            
+            // Load energy data
+            fetch('/api/energy')
+                .then(response => response.json())
+                .then(data => updateEnergyDisplay(data))
+                .catch(error => console.log('Error loading energy data:', error));
+        }
+        
+        function updateServerDisplay(serverData) {
+            const serverGrid = document.getElementById('server-grid');
+            if (!serverData || Object.keys(serverData).length === 0) {
+                serverGrid.innerHTML = '<div class="loading">No server data available</div>';
+                return;
+            }
+            
+            const serversOnline = Object.values(serverData).filter(s => s.power_state === 'on').length;
+            document.getElementById('servers-online').textContent = serversOnline + '/' + Object.keys(serverData).length;
+            
+            let html = '';
+            for (const [serverId, server] of Object.entries(serverData)) {
+                const isOnline = server.power_state === 'on';
+                html += `
+                    <div class="server-card ${isOnline ? 'online' : 'offline'}">
+                        <div class="server-header">
+                            <div class="server-name">${serverId.toUpperCase()}</div>
+                            <div class="power-status ${server.power_state || 'unknown'}">
+                                ${(server.power_state || 'unknown').toUpperCase()}
+                            </div>
+                        </div>
+                        <div class="controls">
+                            ${isOnline ? 
+                                `<button class="btn btn-stop" onclick="serverControl('${serverId}', 'power_off')">🔴 Off</button>
+                                 <button class="btn btn-reset" onclick="serverControl('${serverId}', 'reset')">🔄 Reset</button>` :
+                                `<button class="btn btn-power" onclick="serverControl('${serverId}', 'power_on')">🟢 On</button>`
+                            }
+                        </div>
+                    </div>
+                `;
+            }
+            serverGrid.innerHTML = html;
+        }
+        
+        function updateBMCDisplay(bmcData) {
+            if (bmcData.system_status) {
+                document.getElementById('bmc-cpu').textContent = (bmcData.system_status.cpu_usage || 0).toFixed(1);
+                document.getElementById('bmc-memory').textContent = (bmcData.system_status.memory_usage || 0).toFixed(1);
+                document.getElementById('bmc-temp').textContent = (bmcData.system_status.temperature || 0).toFixed(1);
+            }
+        }
+        
+        function updateEnergyDisplay(energyData) {
+            if (energyData.battery) {
+                const batteryLevel = energyData.battery.charge_level || 0;
+                document.getElementById('battery-level').textContent = batteryLevel.toFixed(1);
+                document.getElementById('battery-status').textContent = '🔋 ' + batteryLevel.toFixed(1) + '%';
+            }
+            if (energyData.solar) {
+                document.getElementById('solar-production').textContent = (energyData.solar.production_kw || 0).toFixed(1);
+            }
+            if (energyData.consumption) {
+                document.getElementById('total-consumption').textContent = (energyData.consumption.total_consumption_kw || 0).toFixed(1);
+            }
+        }
+        
+        function serverControl(serverId, action) {
+            fetch(`/api/server/${serverId}/power/${action}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({force: false})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) setTimeout(loadData, 2000);
+                else alert('Command failed');
+            });
+        }
+        
+        function datacenterControl(action) {
+            if (action === 'shutdown_all' && !confirm('Shutdown ALL servers?')) return;
+            
+            fetch(`/api/datacenter/${action}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) setTimeout(loadData, 3000);
+                else alert('Command failed');
+            });
+        }
+        
+        function refreshData() { loadData(); }
+        
+        // Initialize
+        updateTime();
+        loadData();
+        setInterval(updateTime, 1000);
+        setInterval(loadData, 30000);
+    </script>
+</body>
+</html>'''
+
+def start_mqtt_thread():
+    """Start MQTT client in background thread"""
+    try:
+        bmc_interface.mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+        bmc_interface.mqtt_client.loop_forever()
+    except Exception as e:
+        print(f"❌ MQTT connection error: {e}")
+
+if __name__ == "__main__":
+    # Start MQTT client in background
+    mqtt_thread = threading.Thread(target=start_mqtt_thread, daemon=True)
+    mqtt_thread.start()
+    
+    print("🌐 Starting BMC Web Interface on port 5000...")
+    print("🔗 Access at: http://localhost:5000/")
+    
+    # Start Flask app
+    app.run(host='0.0.0.0', port=5000, debug=False)

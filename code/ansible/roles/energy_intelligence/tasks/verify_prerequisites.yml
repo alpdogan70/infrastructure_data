@@ -1,0 +1,118 @@
+---
+# Vérification prérequis système IA énergétique
+# File: ansible/roles/energy_intelligence/tasks/verify_prerequisites.yml
+
+- name: "🔍 Vérification architecture système"
+  set_fact:
+    system_arch: "{{ ansible_architecture }}"
+    os_family: "{{ ansible_os_family }}"
+    distribution: "{{ ansible_distribution }}"
+    distribution_version: "{{ ansible_distribution_version }}"
+
+- name: "📊 Vérification ressources système minimales"
+  assert:
+    that:
+      - ansible_memtotal_mb >= 2048
+      - ansible_processor_vcpus >= 2
+      - ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first > 10737418240  # 10GB
+    fail_msg: |
+      ❌ Ressources insuffisantes pour Energy AI:
+      RAM: {{ ansible_memtotal_mb }}MB (minimum: 2048MB)
+      CPU: {{ ansible_processor_vcpus }} cores (minimum: 2)
+      Espace disque: {{ (ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first / 1073741824) | round(1) }}GB (minimum: 10GB)
+    success_msg: |
+      ✅ Ressources système suffisantes:
+      RAM: {{ ansible_memtotal_mb }}MB
+      CPU: {{ ansible_processor_vcpus }} cores
+      Espace disque: {{ (ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first / 1073741824) | round(1) }}GB
+
+- name: "🐧 Vérification compatibilité OS"
+  assert:
+    that:
+      - ansible_os_family == "Debian"
+      - ansible_distribution in ["Ubuntu", "Debian"]
+      - ansible_distribution_version is version('18.04', '>=') or ansible_distribution_version is version('10', '>=')
+    fail_msg: |
+      ❌ OS non supporté: {{ ansible_distribution }} {{ ansible_distribution_version }}
+      Systèmes supportés: Ubuntu 18.04+, Debian 10+
+    success_msg: "✅ OS compatible: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+
+- name: "🌐 Vérification connectivité réseau"
+  uri:
+    url: "{{ item.url }}"
+    method: GET
+    timeout: 10
+    status_code: 200
+  loop:
+    - { name: "MQTT Broker Web", url: "http://{{ mqtt_broker_host | default('mqtt1') }}:8080" }
+    - { name: "InfluxDB", url: "http://{{ influxdb_host | default('influxdb1') }}:8086/health" }
+  register: network_connectivity
+  ignore_errors: true
+  when: mqtt_broker_host is defined and influxdb_host is defined
+
+- name: "📡 Résultats connectivité"
+  debug:
+    msg: |
+      📊 Connectivité réseau:
+      {% if network_connectivity is defined and network_connectivity.results is defined %}
+      {% for result in network_connectivity.results %}
+      {{ '✅' if result.status|default(0) == 200 else '❌' }} {{ result.item.name }}: {{ result.item.url }}
+      {% endfor %}
+      {% else %}
+      ⚠️ Tests de connectivité ignorés (variables d'hôtes non définies)
+      {% endif %}
+
+- name: "🔧 Vérification Python 3 disponible"
+  command: "python3 --version"
+  register: python3_check
+  changed_when: false
+
+- name: "📦 Vérification gestionnaire paquets"
+  command: "apt --version"
+  register: apt_check
+  changed_when: false
+
+- name: "🔒 Vérification privilèges sudo"
+  command: "sudo -n true"
+  register: sudo_check
+  changed_when: false
+  failed_when: false
+
+- name: "⚠️ Alertes prérequis"
+  debug:
+    msg: |
+      ⚠️ Attention: Sudo sans mot de passe requis pour l'installation
+  when: sudo_check.rc != 0
+
+- name: "🎯 Vérification répertoires existants"
+  stat:
+    path: "{{ item }}"
+  loop:
+    - "/opt"
+    - "/var/log"
+    - "/etc"
+    - "/usr/local/bin"
+  register: directories_check
+
+- name: "📋 Résumé vérifications prérequis"
+  debug:
+    msg: |
+      ✅ Vérifications prérequis terminées:
+      
+      🖥️ Système: {{ ansible_distribution }} {{ ansible_distribution_version }} ({{ ansible_architecture }})
+      💾 RAM: {{ ansible_memtotal_mb }}MB
+      🔧 CPU: {{ ansible_processor_vcpus }} cores
+      🐍 Python: {{ python3_check.stdout }}
+      📦 APT: Disponible
+      🔒 Sudo: {{ 'OK' if sudo_check.rc == 0 else 'Attention requise' }}
+      
+      🌐 Connectivité:
+      {% if network_connectivity is defined and network_connectivity.results is defined %}
+      {% for result in network_connectivity.results %}
+      {{ '✅' if result.status|default(0) == 200 else '❌' }} {{ result.item.name }}
+      {% endfor %}
+      {% else %}
+      ⚠️ Tests réseau ignorés
+      {% endif %}
+      
+      🎯 Prêt pour installation Energy AI: {{ '✅ OUI' if (ansible_memtotal_mb >= 2048 and ansible_processor_vcpus >= 2) else '❌ NON' }}

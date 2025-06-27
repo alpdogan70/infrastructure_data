@@ -1,0 +1,5 @@
+---
+# defaults file for roles/logging/loki
+
+loki_dir_data: "/data/loki"
+loki_version: 2.9.6

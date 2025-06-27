@@ -1,0 +1,109 @@
+---
+# Updated Prometheus Stack installation with datacenter dashboards
+# File: /ansible/roles/kubernetes/kubernetes_tooling/tasks/install_prometheus_stack.yml
+
+- name: Add stable chart repo
+  kubernetes.core.helm_repository:
+    name: prometheus
+    repo_url: "https://prometheus-community.github.io/helm-charts"
+
+- name: Deploy prometheus stack
+  kubernetes.core.helm:
+    name: kube-prometheus-stack
+    chart_ref: prometheus/kube-prometheus-stack
+    chart_version: "{{ kubernetes_helm_prometheus_stack_version }}"
+    release_namespace: monitoring
+    create_namespace: true
+    values: "{{ lookup('template', 'prometheus-stack-values.yml.j2') | from_yaml }}"
+
+# EXISTING DASHBOARDS (keep unchanged)
+- name: Push existing dashboards configuration
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('file', 'dashboards/' + item | basename ) | from_yaml  }}"
+  with_fileglob:
+  - files/dashboards/*.yml
+
+# # NEW DATACENTER DASHBOARDS (add without breaking existing)
+# - name: Deploy Datacenter Energy Management Dashboard
+#   kubernetes.core.k8s:
+#     state: present
+#     definition:
+#       apiVersion: v1
+#       kind: ConfigMap
+#       metadata:
+#         name: grafana-dashboard-datacenter-energy
+#         namespace: monitoring
+#         labels:
+#           apps: prometheus-operator-grafana
+#           grafana_dashboard: "1"
+#       data:
+#         datacenter-energy.json: "{{ lookup('file', 'dashboards/datacenter-energy.json') }}"
+
+# - name: Deploy Datacenter Technical Monitoring Dashboard
+#   kubernetes.core.k8s:
+#     state: present
+#     definition:
+#       apiVersion: v1
+#       kind: ConfigMap
+#       metadata:
+#         name: grafana-dashboard-datacenter-technical
+#         namespace: monitoring
+#         labels:
+#           apps: prometheus-operator-grafana
+#           grafana_dashboard: "1"
+#       data:
+#         datacenter-technical.json: "{{ lookup('file', 'dashboards/datacenter-technical.json') }}"
+
+- name: Wait for Grafana to discover new dashboards
+  pause:
+    seconds: 30
+    prompt: "Waiting for Grafana to load new datacenter dashboards..."
+
+- name: Display enhanced dashboard deployment status
+  debug:
+    msg: |
+      ✅ Dashboards Grafana déployés avec succès!
+      
+      📊 Dashboards Disponibles:
+      
+      🏢 DATACENTER ENERGY MANAGEMENT:
+      - URL: http://gx.tanerinfo.eu/d/datacenter-energy
+      - Description: Dashboard principal avec métriques temps réel
+      - Contenu: Production solaire, batteries, consommation, météo
+      - Mise à jour: 30 secondes
+      
+      🔧 DATACENTER TECHNICAL MONITORING:  
+      - URL: http://gx.tanerinfo.eu/d/datacenter-technical
+      - Description: Monitoring technique avancé
+      - Contenu: Performance, optimisation, coûts, efficacité
+      - Mise à jour: 30 secondes
+      
+      📋 DASHBOARDS EXISTANTS (conservés):
+      - Traefik Dashboard: http://gx.tanerinfo.eu/d/traefik
+      - Autres dashboards système existants
+      
+      🔗 Accès Grafana:
+      - URL principale: http://gx.tanerinfo.eu
+      - Tous les datasources InfluxDB configurés automatiquement
+
+# - name: Add stable chart repo
+#   kubernetes.core.helm_repository:
+#     name: prometheus
+#     repo_url: "https://prometheus-community.github.io/helm-charts"
+
+# - name: Deploy prometheus stack
+#   kubernetes.core.helm:
+#     name: kube-prometheus-stack
+#     chart_ref: prometheus/kube-prometheus-stack
+#     chart_version: "{{ kubernetes_helm_prometheus_stack_version }}"
+#     release_namespace: monitoring
+#     create_namespace: true
+#     values: "{{ lookup('template', 'prometheus-stack-values.yml.j2') | from_yaml }}"
+
+# - name: push dashboards configuration
+#   kubernetes.core.k8s:
+#     state: present
+#     definition: "{{ lookup('file', 'dashboards/' + item | basename ) | from_yaml  }}"
+#   with_fileglob:
+#   - files/dashboards/*.yml

@@ -1,0 +1,79 @@
+# Optional: Advanced retention policies task
+# File: /ansible/roles/influxdb_v2/tasks/retention_policies.yml (optional)
+
+---
+- name: Configure advanced retention policies for datacenter
+  shell: |
+    set -e
+    TOKEN="{{ current_token }}"
+    ORG="{{ influxdb_org }}"
+    
+    # Function to update bucket retention if needed
+    update_retention() {
+        local bucket_name=$1
+        local new_retention=$2
+        local reason=$3
+        
+        echo "Checking retention for bucket: $bucket_name"
+        
+        # Get current retention
+        current=$(influx bucket list --org "$ORG" --token "$TOKEN" --name "$bucket_name" --json 2>/dev/null | jq -r '.[0].retentionRules[0].everySeconds // "0"')
+        
+        if [ "$current" != "$new_retention" ] && [ "$current" != "0" ]; then
+            echo "  → Updating retention for '$bucket_name': ${current}s → ${new_retention}s ($reason)"
+            
+            # Get bucket ID
+            bucket_id=$(influx bucket list --org "$ORG" --token "$TOKEN" --name "$bucket_name" --json | jq -r '.[0].id')
+            
+            # Update retention
+            influx bucket update \
+                --id "$bucket_id" \
+                --retention "$new_retention" \
+                --token "$TOKEN"
+            
+            echo "  ✅ Updated retention for '$bucket_name'"
+        else
+            echo "  ✓ Retention for '$bucket_name' is already optimal (${current}s)"
+        fi
+    }
+    
+    # Optimize retention policies based on data importance
+    echo "🔧 Optimizing retention policies for datacenter efficiency..."
+    
+    # Real-time data: short retention
+    update_retention "dashboard_realtime" "86400" "1 day - high frequency real-time data"
+    
+    # Dashboard metrics: medium retention
+    update_retention "dashboard_metrics" "604800" "7 days - aggregated dashboard data"
+    
+    # Operational data: 30 days
+    update_retention "solar_production" "2592000" "30 days - operational solar data"
+    update_retention "battery_system" "2592000" "30 days - battery performance data"
+    update_retention "consumption_analytics" "2592000" "30 days - consumption patterns"
+    
+    # Environmental data: 14 days (high frequency, less critical)
+    update_retention "environmental_data" "1209600" "14 days - weather and environmental"
+    
+    # Strategic data: 6 months
+    update_retention "energy_management" "15552000" "6 months - strategic energy decisions"
+    update_retention "datacenter_archive" "15552000" "6 months - historical archive"
+    
+    echo ""
+    echo "✅ Retention policies optimized for datacenter operations"
+    
+  register: retention_result
+  environment:
+    INFLUX_HOST: "http://localhost:8086"
+  when: 
+    - current_token is defined 
+    - current_token != ""
+    - ansible_facts.packages.jq is defined  # Only if jq is available
+
+- name: Display retention optimization results
+  debug:
+    msg: |
+      📊 Optimisation des politiques de rétention:
+      {{ retention_result.stdout_lines | join('\n') }}
+  when: 
+    - retention_result is defined 
+    - retention_result.stdout_lines is defined

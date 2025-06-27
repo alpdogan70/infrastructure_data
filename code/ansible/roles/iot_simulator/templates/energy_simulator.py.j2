@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+"""
+Energy IoT Simulator
+Simulates solar panels, batteries, consumption and grid data
+"""
+
+import json
+import random
+import time
+import threading
+import paho.mqtt.client as mqtt
+from datetime import datetime, timedelta
+import math
+
+# MQTT Configuration
+MQTT_BROKER = "{{ mqtt_broker_host }}"
+MQTT_PORT = 1883
+MQTT_USERNAME = "iot"
+MQTT_PASSWORD = "iot123"
+
+# Simulation configuration
+NUM_SOLAR_PANELS = 6
+NUM_BATTERIES = 3
+NUM_CONSUMPTION_POINTS = 8
+
+class SolarPanel:
+    def __init__(self, panel_id):
+        self.panel_id = f"solar_{panel_id:03d}"
+        self.location = random.choice(["roof_east", "roof_west", "roof_south", "ground_mount"])
+        self.max_power = random.uniform(300, 400)  # Watts
+        self.efficiency = random.uniform(0.18, 0.22)
+        
+    def get_production_data(self):
+        # Simulate solar irradiance based on time of day
+        hour = datetime.now().hour
+        base_irradiance = max(0, math.sin((hour - 6) * math.pi / 12)) if 6 <= hour <= 18 else 0
+        
+        # Add weather variability
+        cloud_factor = random.uniform(0.7, 1.0)
+        irradiance = base_irradiance * cloud_factor * 1000  # W/m²
+        
+        # Calculate power production
+        power = min(self.max_power, irradiance * self.efficiency * 2.0)  # 2m² panel
+        voltage = 24 + (power / self.max_power) * 12  # 24-36V range
+        current = power / voltage if voltage > 0 else 0
+        
+        return {
+            "panel_id": self.panel_id,
+            "location": self.location,
+            "type": "monocrystalline",
+            "power": round(power, 2),
+            "voltage": round(voltage, 2),
+            "current": round(current, 2),
+            "irradiance": round(irradiance, 2),
+            "efficiency": round(self.efficiency * 100, 1),
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+
+class Battery:
+    def __init__(self, battery_id):
+        self.battery_id = f"battery_{battery_id:03d}"
+        self.location = random.choice(["basement", "garage", "utility_room"])
+        self.chemistry = random.choice(["LiFePO4", "Li-ion", "Lead-acid"])
+        self.capacity = random.uniform(5000, 10000)  # Wh
+        self.current_charge = random.uniform(0.3, 0.9) * self.capacity
+        self.max_charge_rate = self.capacity * 0.5  # 0.5C
+        self.max_discharge_rate = self.capacity * 1.0  # 1C
+        
+    def get_battery_data(self):
+        # Simulate charge/discharge based on solar production and consumption
+        hour = datetime.now().hour
+        
+        # Charging during day, discharging at night
+        if 8 <= hour <= 16:
+            # Charging phase
+            charge_delta = random.uniform(0, self.max_charge_rate / 60)  # Per minute
+            self.current_charge = min(self.capacity, self.current_charge + charge_delta)
+            current = charge_delta / 48  # Assuming 48V system
+        else:
+            # Discharging phase
+            discharge_delta = random.uniform(0, self.max_discharge_rate / 60)
+            self.current_charge = max(0, self.current_charge - discharge_delta)
+            current = -discharge_delta / 48
+        
+        charge_level = (self.current_charge / self.capacity) * 100
+        voltage = 48 + (charge_level - 50) * 0.1  # 43-53V range
+        temperature = 25 + random.uniform(-5, 15)
+        
+        # Battery health simulation
+        cycle_wear = random.uniform(0, 0.001)
+        health = max(80, 100 - cycle_wear * 1000)
+        
+        return {
+            "battery_id": self.battery_id,
+            "location": self.location,
+            "chemistry": self.chemistry,
+            "charge_level": round(charge_level, 1),
+            "voltage": round(voltage, 2),
+            "current": round(current, 2),
+            "temperature": round(temperature, 1),
+            "health": round(health, 1),
+            "capacity": round(self.capacity, 0),
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+
+class ConsumptionPoint:
+    def __init__(self, device_id):
+        self.device_id = f"load_{device_id:03d}"
+        self.device_type = random.choice(["hvac", "lighting", "appliances", "ev_charger", "heat_pump"])
+        self.location = random.choice(["living_room", "kitchen", "bedroom", "garage", "basement"])
+        self.base_power = self._get_base_power()
+        
+    def _get_base_power(self):
+        power_ranges = {
+            "hvac": (2000, 5000),
+            "lighting": (100, 500),
+            "appliances": (500, 2000),
+            "ev_charger": (3000, 7000),
+            "heat_pump": (3000, 6000)
+        }
+        min_power, max_power = power_ranges.get(self.device_type, (100, 1000))
+        return random.uniform(min_power, max_power)
+    
+    def get_consumption_data(self):
+        # Time-based consumption patterns
+        hour = datetime.now().hour
+        
+        # Usage multipliers by hour
+        if self.device_type == "hvac":
+            multiplier = 1.5 if hour in [7, 8, 18, 19, 20] else 0.8
+        elif self.device_type == "lighting":
+            multiplier = 1.8 if 18 <= hour <= 23 or 6 <= hour <= 8 else 0.2
+        elif self.device_type == "ev_charger":
+            multiplier = 1.0 if 22 <= hour <= 6 else 0.1
+        else:
+            multiplier = random.uniform(0.5, 1.2)
+        
+        power = self.base_power * multiplier * random.uniform(0.8, 1.2)
+        energy = power / 60  # Wh per minute
+        
+        return {
+            "device_id": self.device_id,
+            "device_type": self.device_type,
+            "location": self.location,
+            "power": round(power, 2),
+            "energy": round(energy, 2),
+            "efficiency": round(random.uniform(0.85, 0.95), 3),
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+
+class GridMonitor:
+    def __init__(self):
+        self.grid_id = "main_grid"
+        
+    def get_grid_data(self):
+        # Grid parameters
+        voltage = 230 + random.uniform(-5, 5)  # European standard ±2%
+        frequency = 50 + random.uniform(-0.1, 0.1)  # ±0.2% tolerance
+        power_factor = random.uniform(0.85, 0.98)
+        
+        # Import/export simulation
+        hour = datetime.now().hour
+        if 10 <= hour <= 16:  # Solar production hours
+            grid_power = random.uniform(-2000, 500)  # Mostly exporting
+        else:
+            grid_power = random.uniform(500, 4000)  # Importing
+        
+        return {
+            "grid_id": self.grid_id,
+            "phase": "L1",
+            "voltage": round(voltage, 1),
+            "frequency": round(frequency, 3),
+            "power_factor": round(power_factor, 3),
+            "power": round(grid_power, 2),
+            "import_energy": round(max(0, grid_power) / 60, 2),
+            "export_energy": round(max(0, -grid_power) / 60, 2),
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+
+class WeatherStation:
+    def __init__(self):
+        self.station_id = "weather_001"
+        self.location = "site_weather"
+        
+    def get_weather_data(self):
+        hour = datetime.now().hour
+        
+        # Solar irradiance simulation
+        base_irradiance = max(0, math.sin((hour - 6) * math.pi / 12)) if 6 <= hour <= 18 else 0
+        irradiance = base_irradiance * random.uniform(800, 1200)
+        
+        cloud_cover = random.uniform(0, 100)
+        wind_speed = random.uniform(0, 15)
+        temperature = 20 + random.uniform(-10, 15)
+        
+        return {
+            "station_id": self.station_id,
+            "location": self.location,
+            "irradiance": round(irradiance, 2),
+            "cloud_cover": round(cloud_cover, 1),
+            "wind_speed": round(wind_speed, 1),
+            "ambient_temperature": round(temperature, 1),
+            "humidity": round(random.uniform(30, 80), 1),
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+
+class EnergySimulator:
+    def __init__(self):
+        self.solar_panels = [SolarPanel(i) for i in range(NUM_SOLAR_PANELS)]
+        self.batteries = [Battery(i) for i in range(NUM_BATTERIES)]
+        self.consumption_points = [ConsumptionPoint(i) for i in range(NUM_CONSUMPTION_POINTS)]
+        self.grid_monitor = GridMonitor()
+        self.weather_station = WeatherStation()
+        
+        self.client = mqtt.Client(client_id=f"energy_simulator_{random.randint(1000,9999)}")
+        self.client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+        self.client.on_connect = self.on_connect
+        self.running = True
+        
+    def on_connect(self, client, userdata, flags, rc):
+        if rc == 0:
+            print(f"Energy simulator connected to MQTT broker at {MQTT_BROKER}")
+        else:
+            print(f"Failed to connect, return code {rc}")
+    
+    def simulate_solar_panels(self):
+        while self.running:
+            for panel in self.solar_panels:
+                try:
+                    data = panel.get_production_data()
+                    topic = f"energy/solar/{panel.panel_id}/production"
+                    self.client.publish(topic, json.dumps(data))
+                    print(f"Solar: {panel.panel_id} -> {data['power']}W")
+                except Exception as e:
+                    print(f"Error in solar simulation: {e}")
+            time.sleep(30)
+    
+    def simulate_batteries(self):
+        while self.running:
+            for battery in self.batteries:
+                try:
+                    data = battery.get_battery_data()
+                    topic = f"energy/battery/{battery.battery_id}/status"
+                    self.client.publish(topic, json.dumps(data))
+                    print(f"Battery: {battery.battery_id} -> {data['charge_level']}%")
+                except Exception as e:
+                    print(f"Error in battery simulation: {e}")
+            time.sleep(20)
+    
+    def simulate_consumption(self):
+        while self.running:
+            for device in self.consumption_points:
+                try:
+                    data = device.get_consumption_data()
+                    topic = f"energy/consumption/{device.device_id}/power"
+                    self.client.publish(topic, json.dumps(data))
+                    print(f"Load: {device.device_id} -> {data['power']}W")
+                except Exception as e:
+                    print(f"Error in consumption simulation: {e}")
+            time.sleep(25)
+    
+    def simulate_grid(self):
+        while self.running:
+            try:
+                data = self.grid_monitor.get_grid_data()
+                topic = "energy/grid/status"
+                self.client.publish(topic, json.dumps(data))
+                print(f"Grid: {data['power']}W, {data['voltage']}V")
+            except Exception as e:
+                print(f"Error in grid simulation: {e}")
+            time.sleep(15)
+    
+    def simulate_weather(self):
+        while self.running:
+            try:
+                data = self.weather_station.get_weather_data()
+                topic = "weather/conditions"
+                self.client.publish(topic, json.dumps(data))
+                print(f"Weather: {data['irradiance']}W/m², {data['ambient_temperature']}°C")
+            except Exception as e:
+                print(f"Error in weather simulation: {e}")
+            time.sleep(60)
+    
+    def run(self):
+        print("Starting Energy IoT Simulator...")
+        
+        try:
+            self.client.connect(MQTT_BROKER, MQTT_PORT, 60)
+            self.client.loop_start()
+        except Exception as e:
+            print(f"Failed to connect to MQTT broker: {e}")
+            return
+        
+        time.sleep(2)
+        
+        # Start simulation threads
+        threads = [
+            threading.Thread(target=self.simulate_solar_panels, daemon=True),
+            threading.Thread(target=self.simulate_batteries, daemon=True),
+            threading.Thread(target=self.simulate_consumption, daemon=True),
+            threading.Thread(target=self.simulate_grid, daemon=True),
+            threading.Thread(target=self.simulate_weather, daemon=True)
+        ]
+        
+        for thread in threads:
+            thread.start()
+        
+        try:
+            while self.running:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nShutting down energy simulator...")
+            self.running = False
+        
+        self.client.loop_stop()
+        self.client.disconnect()
+
+if __name__ == "__main__":
+    simulator = EnergySimulator()
+    simulator.run()

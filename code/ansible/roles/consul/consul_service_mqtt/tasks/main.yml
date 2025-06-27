@@ -1,0 +1,77 @@
+---
+- name: Wait for Consul to be ready
+  wait_for:
+    port: 8500
+    delay: 5
+
+- name: Register MQTT in Consul
+  copy:
+    content: |
+      {
+        "services": [
+          {
+            "name": "mqtt",
+            "tags": ["iot", "messaging", "mosquitto"],
+            "address": "{{ ansible_default_ipv4.address }}",
+            "port": 1883,
+            "check": {
+              "tcp": "{{ ansible_default_ipv4.address }}:1883",
+              "interval": "10s",
+              "timeout": "5s"
+            }
+          },
+          {
+            "name": "mqtt-websocket",
+            "tags": ["iot", "websocket"],
+            "address": "{{ ansible_default_ipv4.address }}",
+            "port": 9001,
+            "check": {
+              "tcp": "{{ ansible_default_ipv4.address }}:9001",
+              "interval": "10s",
+              "timeout": "5s"
+            }
+          }
+        ]
+      }
+    dest: /etc/consul.d/mqtt.json
+    owner: consul
+    group: consul
+    mode: '0644'
+  notify: reload consul
+
+- name: Reload consul
+  systemd:
+    name: consul
+    state: reloaded
+
+# ---
+# - name: Register MQTT in Consul
+#   copy:
+#     content: |
+#       {
+#         "services": [
+#           {
+#             "name": "mqtt",
+#             "tags": ["iot", "messaging"],
+#             "port": 1883,
+#             "check": {
+#               "tcp": "{{ ansible_default_ipv4.address }}:1883",
+#               "interval": "10s"
+#             }
+#           },
+#           {
+#             "name": "mqtt-websocket",
+#             "tags": ["iot", "websocket"],
+#             "port": 9001,
+#             "check": {
+#               "tcp": "{{ ansible_default_ipv4.address }}:9001",
+#               "interval": "10s"
+#             }
+#           }
+#         ]
+#       }
+#     dest: /etc/consul.d/mqtt.json
+#     owner: consul
+#     group: consul
+#     mode: '0644'
+#   notify: reload consul

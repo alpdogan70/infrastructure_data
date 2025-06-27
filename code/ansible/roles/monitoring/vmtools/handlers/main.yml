@@ -1,0 +1,16 @@
+---
+# handlers file for roles/vmagent
+
+- name: restart_vmagent
+  systemd:
+    name: vmagent
+    state: restarted
+    enabled: yes
+    daemon_reload: yes
+
+- name: restart_vmalert
+  systemd:
+    name: vmalert
+    state: restarted
+    enabled: yes
+    daemon_reload: yes

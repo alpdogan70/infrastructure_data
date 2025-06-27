@@ -1,0 +1,134 @@
+---
+- name: Wait for InfluxDB to be fully ready
+  wait_for:
+    port: 8086
+    delay: 10
+    timeout: 60
+
+- name: Read token from file
+  slurp:
+    src: /etc/influxdb2/admin-token
+  register: token_content
+  failed_when: false
+
+- name: Set token variable
+  set_fact:
+    current_token: "{{ token_content.content | b64decode | trim }}"
+  when: 
+    - token_content is defined
+    - not token_content.failed
+    - token_content.content is defined
+
+- name: Use fallback token if needed
+  set_fact:
+    current_token: "{{ influxdb_generated_token | default(setup_result.json.auth.token) }}"
+  when: current_token is not defined
+
+- name: Debug token info
+  debug:
+    msg: |
+      Token available: {{ current_token is defined }}
+      Token length: {{ current_token | length if current_token is defined else 0 }}
+      Token preview: {{ current_token[:20] if current_token is defined else 'N/A' }}...
+
+- name: Create all energy buckets in one go
+  shell: |
+    set -e
+    TOKEN="{{ current_token }}"
+    ORG="{{ influxdb_org }}"
+    
+    # Function to create bucket
+    create_bucket() {
+        local name=$1
+        local retention=$2
+        local description=$3
+        
+        echo "Creating bucket: $name"
+        
+        # Check if bucket exists
+        if influx bucket list --org "$ORG" --token "$TOKEN" --name "$name" 2>/dev/null | grep -q "$name"; then
+            echo "  ✓ Bucket '$name' already exists"
+        else
+            echo "  → Creating bucket '$name' with retention $retention"
+            influx bucket create \
+                --org "$ORG" \
+                --name "$name" \
+                --retention "$retention" \
+                --description "$description" \
+                --token "$TOKEN"
+            echo "  ✅ Created bucket '$name'"
+        fi
+    }
+    
+    # Create all buckets
+    create_bucket "telegraf" "604800s" "System metrics from Telegraf (7 days)"
+    create_bucket "{{ influxdb_bucket }}" "{{ influxdb_retention }}" "IoT sensor data"
+    create_bucket "solar_panels" "2592000s" "Solar panel production data (30 days)"
+    create_bucket "batteries" "2592000s" "Battery status and performance (30 days)"
+    create_bucket "energy_consumption" "2592000s" "Energy consumption data (30 days)"
+    create_bucket "grid_data" "2592000s" "Electrical grid data (30 days)"
+    create_bucket "weather_data" "1209600s" "Weather station data (14 days)"
+    create_bucket "energy_analytics" "7776000s" "Energy analytics and alerts (90 days)"
+    
+    echo ""
+    echo "=== All buckets in organization '$ORG' ==="
+    influx bucket list --org "$ORG" --token "$TOKEN"
+    
+  register: bucket_result
+  environment:
+    INFLUX_HOST: "http://localhost:8086"
+  when: current_token is defined and current_token != ""
+
+- name: Display bucket creation output
+  debug:
+    msg: |
+      {{ bucket_result.stdout_lines | join('\n') }}
+  when: bucket_result is defined and bucket_result.stdout_lines is defined
+
+- name: Verify buckets via HTTP API
+  uri:
+    url: "http://localhost:8086/api/v2/buckets?org={{ influxdb_org }}"
+    method: GET
+    headers:
+      Authorization: "Token {{ current_token }}"
+  register: api_buckets
+  when: current_token is defined
+
+- name: List all created buckets
+  debug:
+    msg: |
+      🎯 Buckets créés dans InfluxDB ({{ api_buckets.json.buckets | length }} total):
+      {% for bucket in api_buckets.json.buckets | sort(attribute='name') %}
+      {% set retention = bucket.retentionRules[0].everySeconds if bucket.retentionRules and bucket.retentionRules|length > 0 else 'infinite' %}
+      - {{ bucket.name }}: {{ retention }}s ({{ (retention|int / 86400) | round(1) if retention != 'infinite' else 'infinite' }} jours)
+      {% endfor %}
+  when: 
+    - api_buckets is defined
+    - api_buckets.json is defined
+    - api_buckets.json.buckets is defined
+
+- name: Fail if no token
+  fail:
+    msg: |
+      ❌ Impossible de créer les buckets - aucun token disponible
+      Vérifiez l'installation d'InfluxDB et la génération du token
+  when: current_token is not defined or current_token == ""
+
+
+# - name: Create additional buckets if needed
+#   shell: |
+#     TOKEN="{{ influxdb_generated_token | default(setup_result.json.auth.token) }}"
+#     export INFLUX_TOKEN=$TOKEN
+    
+#     # Create telegraf bucket
+#     influx bucket list --org {{ influxdb_org }} --token "$TOKEN" | grep -q "telegraf" || \
+#     influx bucket create --org {{ influxdb_org }} --name telegraf --retention 604800s --token "$TOKEN"
+    
+#     # Ensure sensors bucket exists
+#     influx bucket list --org {{ influxdb_org }} --token "$TOKEN" | grep -q "{{ influxdb_bucket }}" || \
+#     influx bucket create --org {{ influxdb_org }} --name {{ influxdb_bucket }} --retention {{ influxdb_retention }} --token "$TOKEN"
+#   environment:
+#     INFLUX_HOST: "http://localhost:8086"
+#   register: bucket_creation
+#   changed_when: "'created' in bucket_creation.stdout"
+#   when: influxdb_generated_token is defined or setup_result.json.auth.token is defined

@@ -1,0 +1,61 @@
+---
+- name: Configure MQTT Broker
+  hosts: meta-app_mqtt
+  become: true
+  vars:
+    mqtt_data_dir: "/data"
+    volumes_disks:
+      - { disk: '/dev/vdb', path: '{{ mqtt_data_dir }}', owner: "mosquitto" }
+  roles:
+    - volumes
+    - consul/consul
+    - mqtt
+    - consul/consul_service_mqtt
+    - monitoring/custom_metrics
+
+- name: Configure InfluxDB
+  hosts: meta-app_influxdb
+  become: true
+  vars:
+    influxdb_data_dir: "/data"
+    influxdb_admin_user: "{{ vault_influxdb_admin_user }}"
+    influxdb_admin_password: "{{ vault_influxdb_admin_password }}"
+    influxdb_org: "iot"
+    influxdb_bucket: "sensors"
+    influxdb_retention: "30d"
+    volumes_disks:
+      - { disk: '/dev/vdb', path: '{{ influxdb_data_dir }}', owner: "influxdb" }
+
+  roles:
+    - volumes
+    - consul/consul
+    - influxdb_v2
+    - consul/consul_service_influxdb
+    - monitoring/custom_metrics
+
+- name: Configure Telegraf on dedicated server
+  hosts: meta-app_telegraf
+  become: true
+  vars:
+    telegraf_mqtt_broker: "{{ hostvars[groups['meta-app_mqtt'][0]]['ansible_default_ipv4']['address'] }}"
+    influxdb_host: "{{ hostvars[groups['meta-app_influxdb'][0]]['ansible_default_ipv4']['address'] }}"
+    influxdb_url: "http://{{ influxdb_host }}:8086"
+    influxdb_token: "{{ influxdb_token_shared }}"
+    influxdb_org: "iot"
+    influxdb_bucket: "sensors"
+  roles:
+    - consul/consul
+    - telegraf_dedicated
+    - consul/consul_service_telegraf
+    - monitoring/custom_metrics
+
+- name: Configure IoT Simulator
+  hosts: meta-app_iot-simulator
+  become: true
+  vars:
+    mqtt_broker_host: "{{ hostvars[groups['meta-app_mqtt'][0]]['ansible_default_ipv4']['address'] }}"
+  roles:
+    - consul/consul
+    - iot_simulator
+    - monitoring/custom_metrics
+

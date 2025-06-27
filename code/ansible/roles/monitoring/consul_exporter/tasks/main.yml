@@ -1,0 +1,57 @@
+---
+# tasks file for roles/monitoring/consul_exporter
+
+- name: create group consul_exporter
+  ansible.builtin.group:
+    name: consul_exporter
+    system: yes
+    state: present
+
+- name: create user consul_exporter
+  ansible.builtin.user:
+    name: consul_exporter
+    system: yes
+    shell: /sbin/nologin
+    state: present
+
+- name: check if consul_exporter exists
+  ansible.builtin.stat:
+    path: "{{ consul_exporter_binary_path }}/consul_exporter"
+  register: __consul_exporter_exists
+
+- name: if consul_exporter exists get version
+  ansible.builtin.shell: "cat /etc/systemd/system/consul_exporter.service | grep Version | sed s/'.*Version '//g"
+  register: __consul_exporter_get_version
+  when: __consul_exporter_exists.stat.exists == true
+  changed_when: false
+
+- name: download consul_exporter
+  ansible.builtin.unarchive:
+    src: https://github.com/prometheus/consul_exporter/releases/download/v{{ consul_exporter_version }}/consul_exporter-{{ consul_exporter_version }}.linux-amd64.tar.gz        
+    dest: "{{ consul_exporter_binary_path }}"
+    remote_src: yes
+    mode: 0750
+    owner: consul_exporter
+    group: consul_exporter
+    extra_opts:
+    - consul_exporter-0.11.0.linux-amd64/consul_exporter
+    - --strip-components=1
+  when: __consul_exporter_exists.stat.exists == False or not __consul_exporter_get_version.stdout == consul_exporter_version
+
+- name: create service consul_exporter for agent
+  ansible.builtin.template:
+    src: "consul_exporter.service.j2"
+    dest: "/etc/systemd/system/consul_exporter.service"
+    mode: 0750
+    owner: "consul_exporter"
+    group: "consul_exporter"
+  notify: reload_daemon_and_restart_consul_exporter
+
+- meta: flush_handlers
+
+- name: start consul_exporter
+  ansible.builtin.service:
+    name: consul_exporter
+    state: started
+    enabled: yes
+

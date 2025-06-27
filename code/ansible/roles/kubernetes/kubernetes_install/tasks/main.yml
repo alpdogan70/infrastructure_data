@@ -1,0 +1,10 @@
+- name: Prerequisites
+  ansible.builtin.include_tasks: prerequisites.yml
+
+- name: Initialisation
+  ansible.builtin.include_tasks: initialisation.yml
+  when: kubeadm_init_master == ansible_hostname
+
+- name: Join server
+  include_tasks: join.yml
+  when: kubeadm_init_master != ansible_hostname

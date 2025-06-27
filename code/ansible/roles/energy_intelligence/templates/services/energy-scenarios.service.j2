@@ -1,0 +1,66 @@
+# Template Service Systemd Energy Scenarios
+# File: ansible/roles/energy_intelligence/templates/services/energy-scenarios.service.j2
+
+[Unit]
+Description={{ energy_ai_services[1].description | default('Intelligence Énergétique - Moteur de Scénarios') }}
+Documentation=https://docs.energy-ai.local/scenarios
+After=network.target influxdb.service mosquitto.service energy-ai-predictor.service
+Wants=network-online.target
+Requires=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory={{ energy_ai_paths.base | default('/opt/energy-ai') }}
+Environment="PYTHONUNBUFFERED=1"
+Environment="ENERGY_AI_ENV={{ energy_ai.environment | default('production') }}"
+Environment="ENERGY_AI_VERSION={{ energy_ai.version | default('1.0.0') }}"
+Environment="MQTT_BROKER={{ mqtt_broker_host | default('localhost') }}"
+Environment="INFLUXDB_HOST={{ influxdb_host | default('localhost') }}"
+Environment="INFLUXDB_ORG={{ influxdb_org | default('iot') }}"
+
+# Commande principale
+ExecStart={{ python_ai.venv_path | default('/opt/energy-ai/venv') }}/bin/python {{ energy_ai_paths.base | default('/opt/energy-ai') }}/scenario_engine.py
+
+# Redémarrage automatique
+Restart={{ energy_ai_services[1].restart_policy | default('always') }}
+RestartSec=15
+StartLimitInterval=300
+StartLimitBurst=5
+
+# Santé du service
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ energy_ai_paths.base | default('/opt/energy-ai') }} {{ energy_ai_paths.logs | default('/opt/energy-ai/logs') }} {{ energy_ai_paths.models | default('/opt/energy-ai/models') }} {{ energy_ai_paths.data | default('/opt/energy-ai/data') }}
+
+# Limites de ressources
+MemoryMax=1G
+CPUQuota=30%
+TasksMax=50
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=energy-scenarios
+
+# Timeouts
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+# Sanity checks
+ExecStartPre=/bin/bash -c 'test -f {{ energy_ai_paths.base | default('/opt/energy-ai') }}/scenario_engine.py'
+ExecStartPre=/bin/bash -c 'test -d {{ energy_ai_paths.logs | default('/opt/energy-ai/logs') }}'
+ExecStartPre={{ python_ai.venv_path | default('/opt/energy-ai/venv') }}/bin/python -c "import sys; sys.path.append('{{ energy_ai_paths.base | default('/opt/energy-ai') }}'); print('✅ Python environment OK')"
+
+# Actions post-démarrage
+ExecStartPost=/bin/bash -c 'echo "🎯 Energy Scenarios Engine started at $(date)" >> {{ energy_ai_paths.logs | default('/opt/energy-ai/logs') }}/service.log'
+
+# Actions avant arrêt
+ExecStopPost=/bin/bash -c 'echo "🛑 Energy Scenarios Engine stopped at $(date)" >> {{ energy_ai_paths.logs | default('/opt/energy-ai/logs') }}/service.log'
+
+[Install]
+WantedBy=multi-user.target
+Alias=scenarios.service

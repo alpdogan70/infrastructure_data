@@ -1,0 +1,6 @@
+---
+# tasks file for roles/volumes
+
+- name: "Install disk - {{ item.disk }}"
+  include_tasks: install_disk.yml
+  with_items: "{{ volumes_disks }}"

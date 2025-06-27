@@ -1,0 +1,15 @@
+[Unit]
+Description=Postgresql Exporter Version {{ postgresql_exporter_version }}
+Documentation=https://github.com/prometheus-community/postgres_exporter/releases
+After=network-online.target
+Requires=network-online.target
+
+[Service]
+User=postgres
+Group=postgres
+Environment=DATA_SOURCE_NAME="user=postgres host=/var/run/postgresql/ sslmode=disable"
+ExecStart=/usr/local/bin/postgres_exporter
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+[Unit]
+Description=BMC Power Management Service
+After=network.target bmc-core-simulator.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bmc-simulator
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/opt/bmc-simulator/venv/bin/python /opt/bmc-simulator/bmc_power_manager.py
+Restart=always
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

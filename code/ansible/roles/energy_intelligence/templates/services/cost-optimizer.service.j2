@@ -1,0 +1,66 @@
+# Template Service Systemd Cost Optimizer
+# File: ansible/roles/energy_intelligence/templates/services/cost-optimizer.service.j2
+
+[Unit]
+Description={{ energy_ai_services[3].description | default('Intelligence Énergétique - Optimiseur de Coûts') }}
+Documentation=https://docs.energy-ai.local/cost-optimizer
+After=network.target influxdb.service mosquitto.service energy-ai-predictor.service
+Wants=network-online.target
+Requires=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory={{ energy_ai_paths.base | default('/opt/energy-ai') }}
+Environment="PYTHONUNBUFFERED=1"
+Environment="ENERGY_AI_ENV={{ energy_ai.environment | default('production') }}"
+Environment="ENERGY_AI_VERSION={{ energy_ai.version | default('1.0.0') }}"
+Environment="MQTT_BROKER={{ mqtt_broker_host | default('localhost') }}"
+Environment="INFLUXDB_HOST={{ influxdb_host | default('localhost') }}"
+Environment="INFLUXDB_ORG={{ influxdb_org | default('iot') }}"
+
+# Commande principale
+ExecStart={{ python_ai.venv_path | default('/opt/energy-ai/venv') }}/bin/python {{ energy_ai_paths.base | default('/opt/energy-ai') }}/cost_optimizer.py
+
+# Redémarrage automatique
+Restart={{ energy_ai_services[3].restart_policy | default('always') }}
+RestartSec=20
+StartLimitInterval=300
+StartLimitBurst=5
+
+# Santé du service
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ energy_ai_paths.base | default('/opt/energy-ai') }} {{ energy_ai_paths.logs | default('/opt/energy-ai/logs') }} {{ energy_ai_paths.models | default('/opt/energy-ai/models') }} {{ energy_ai_paths.data | default('/opt/energy-ai/data') }}
+
+# Limites de ressources
+MemoryMax=1G
+CPUQuota=25%
+TasksMax=50
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cost-optimizer
+
+# Timeouts
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+# Sanity checks
+ExecStartPre=/bin/bash -c 'test -f {{ energy_ai_paths.base | default('/opt/energy-ai') }}/cost_optimizer.py'
+ExecStartPre=/bin/bash -c 'test -d {{ energy_ai_paths.logs | default('/opt/energy-ai/logs') }}'
+ExecStartPre={{ python_ai.venv_path | default('/opt/energy-ai/venv') }}/bin/python -c "import numpy, pandas; print('✅ ML libraries available')"
+
+# Actions post-démarrage
+ExecStartPost=/bin/bash -c 'echo "💰 Cost Optimizer started at $(date)" >> {{ energy_ai_paths.logs | default('/opt/energy-ai/logs') }}/service.log'
+
+# Actions avant arrêt
+ExecStopPost=/bin/bash -c 'echo "🛑 Cost Optimizer stopped at $(date)" >> {{ energy_ai_paths.logs | default('/opt/energy-ai/logs') }}/service.log'
+
+[Install]
+WantedBy=multi-user.target
+Alias=cost-optimizer.service

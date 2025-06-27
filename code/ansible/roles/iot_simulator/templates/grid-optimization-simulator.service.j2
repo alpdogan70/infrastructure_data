@@ -1,0 +1,21 @@
+[Unit]
+Description=Grid and Optimization Data Simulator for Datacenter
+After=network.target mqtt.service datacenter-energy-simulator.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/iot-simulator
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/opt/iot-simulator/venv/bin/python /opt/iot-simulator/grid_optimization_simulator.py
+Restart=always
+RestartSec=20
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+MemoryMax=256M
+CPUQuota=25%
+
+[Install]
+WantedBy=multi-user.target

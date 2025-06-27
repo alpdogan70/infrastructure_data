@@ -1,0 +1,230 @@
+# Enhanced MQTT Configuration for Dashboard
+# File: /ansible/roles/mqtt/defaults/main.yml
+
+---
+# MQTT Broker configuration optimized for dashboard
+mqtt_data_dir: "/data"
+mqtt_max_connections: 500
+mqtt_websocket_max_connections: 200  # Increased for dashboard connections
+mqtt_keepalive_interval: 60
+mqtt_max_inflight_messages: 100
+mqtt_max_queued_messages: 2000  # Increased for dashboard data
+mqtt_message_size_limit: 16384  # Increased for JSON payloads
+mqtt_max_retained_messages: 2000  # Increased for status retention
+
+# Enhanced user configuration
+mqtt_users:
+  - username: "iot"
+    password: "iot123"
+    topics:
+      - "sensors/#"
+      - "devices/#"
+      - "energy/#"
+      - "weather/#"
+      - "test/#"
+    
+  - username: "telegraf"
+    password: "telegraf123"
+    access: "read"
+    topics:
+      - "sensors/#"
+      - "devices/#"
+      - "energy/#"
+      - "weather/#"
+    
+  - username: "admin"
+    password: "admin123"
+    topics:
+      - "#"
+    
+  - username: "energy_monitor"
+    password: "energy123"
+    topics:
+      - "energy/#"
+      - "weather/#"
+      - "sensors/+/temperature"
+      - "sensors/+/humidity"
+  
+  # New dashboard-specific user
+  - username: "dashboard"
+    password: "dash123"
+    access: "read"
+    topics:
+      - "energy/datacenter/dashboard"
+      - "energy/datacenter/summary"
+      - "energy/+/datacenter/+"
+      - "weather/datacenter/current"
+      - "alerts/energy/#"
+
+# Enhanced energy topic structure for dashboard
+mqtt_energy_topics:
+  # Dashboard aggregated topics (high priority, retained)
+  dashboard:
+    - "energy/datacenter/dashboard"          # Main dashboard data
+    - "energy/datacenter/summary"            # Simplified summary
+    - "energy/datacenter/status"             # System status
+    - "energy/datacenter/alerts"             # Critical alerts
+    - "weather/datacenter/current"           # Current weather
+  
+  # Solar production topics
+  solar:
+    - "energy/solar/datacenter/production"   # Total production
+    - "energy/solar/datacenter/summary"      # Aggregated solar data
+    - "energy/solar/+/panel/+"              # Individual panels
+    - "energy/solar/+/inverter/+"           # Inverter data
+    - "energy/solar/+/efficiency"           # Efficiency metrics
+  
+  # Battery system topics
+  battery:
+    - "energy/battery/datacenter/status"     # Battery system status
+    - "energy/battery/datacenter/summary"    # Aggregated battery data
+    - "energy/battery/+/charge_level"       # Individual battery levels
+    - "energy/battery/+/health"             # Battery health
+    - "energy/battery/+/temperature"        # Temperature monitoring
+    - "energy/battery/+/cycles"             # Cycle count
+  
+  # Consumption monitoring
+  consumption:
+    - "energy/consumption/datacenter/summary" # Total consumption
+    - "energy/consumption/datacenter/zones"   # Zone breakdown
+    - "energy/consumption/+/power"           # Device power
+    - "energy/consumption/+/energy"          # Energy usage
+    - "energy/load/+/current"               # Current load
+  
+  # Grid connection
+  grid:
+    - "energy/grid/datacenter/status"        # Grid connection status
+    - "energy/grid/power"                    # Import/export power
+    - "energy/grid/voltage"                  # Grid voltage
+    - "energy/grid/frequency"                # Grid frequency
+    - "energy/grid/pricing"                  # Electricity pricing
+  
+  # Weather and environmental
+  weather:
+    - "weather/datacenter/current"           # Current conditions
+    - "weather/datacenter/forecast"          # Weather forecast
+    - "weather/irradiance"                   # Solar irradiance
+    - "weather/cloud_cover"                  # Cloud coverage
+    - "weather/wind"                         # Wind conditions
+    - "weather/temperature"                  # Ambient temperature
+  
+  # System monitoring
+  system:
+    - "system/datacenter/health"             # Overall system health
+    - "system/datacenter/performance"        # Performance metrics
+    - "system/datacenter/efficiency"         # Energy efficiency
+    - "system/servers/+/status"             # Server status
+
+# Topic retention settings for dashboard
+mqtt_retained_topics:
+  # Always retain last known state for dashboard
+  - "energy/datacenter/dashboard"
+  - "energy/datacenter/summary"  
+  - "energy/datacenter/status"
+  - "weather/datacenter/current"
+  - "energy/solar/datacenter/summary"
+  - "energy/battery/datacenter/summary"
+  - "energy/consumption/datacenter/summary"
+  - "energy/grid/datacenter/status"
+
+# QoS settings for different topic types
+mqtt_qos_settings:
+  dashboard_critical: 2    # Dashboard data (exactly once)
+  sensor_data: 1          # Sensor readings (at least once)
+  status_updates: 1       # Status updates (at least once)
+  logs: 0                 # Log messages (at most once)
+
+# Dashboard-specific MQTT features
+mqtt_dashboard_features:
+  enable_websockets: true
+  websocket_port: 9001
+  enable_bridge: false
+  enable_persistence: true
+  persistence_cleanup: true
+  
+  # Message limits for dashboard clients
+  max_queued_messages_dashboard: 500
+  max_inflight_messages_dashboard: 50
+  
+  # Heartbeat for dashboard connections
+  dashboard_heartbeat_topic: "dashboard/heartbeat"
+  dashboard_heartbeat_interval: 30
+
+
+# ---
+# # MQTT Broker configuration
+# mqtt_data_dir: "/data"
+# mqtt_max_connections: 500
+# mqtt_websocket_max_connections: 100
+# mqtt_keepalive_interval: 60
+# mqtt_max_inflight_messages: 100
+# mqtt_max_queued_messages: 1000
+# mqtt_message_size_limit: 8192
+# mqtt_max_retained_messages: 1000
+
+# # User configuration
+# mqtt_users:
+#   - username: "iot"
+#     password: "iot123"
+#     topics:
+#       - "sensors/#"
+#       - "devices/#"
+#       - "energy/#"
+#       - "weather/#"
+#       - "test/#"
+    
+#   - username: "telegraf"
+#     password: "telegraf123"
+#     access: "read"
+#     topics:
+#       - "sensors/#"
+#       - "devices/#"
+#       - "energy/#"
+#       - "weather/#"
+    
+#   - username: "admin"
+#     password: "admin123"
+#     topics:
+#       - "#"
+    
+#   - username: "energy_monitor"
+#     password: "energy123"
+#     topics:
+#       - "energy/#"
+#       - "weather/#"
+#       - "sensors/+/temperature"
+#       - "sensors/+/humidity"
+
+# # Energy-specific topic structure
+# mqtt_energy_topics:
+#   solar:
+#     - "energy/solar/+/production"
+#     - "energy/solar/+/voltage"
+#     - "energy/solar/+/current"
+#     - "energy/solar/+/efficiency"
+  
+#   battery:
+#     - "energy/battery/+/charge_level"
+#     - "energy/battery/+/voltage"
+#     - "energy/battery/+/current"
+#     - "energy/battery/+/temperature"
+#     - "energy/battery/+/health"
+  
+#   consumption:
+#     - "energy/consumption/+/power"
+#     - "energy/consumption/+/energy"
+#     - "energy/devices/+/power"
+#     - "energy/circuits/+/load"
+  
+#   grid:
+#     - "energy/grid/voltage"
+#     - "energy/grid/frequency"
+#     - "energy/grid/power_factor"
+#     - "energy/grid/import"
+#     - "energy/grid/export"
+  
+#   weather:
+#     - "weather/irradiance"
+#     - "weather/cloud_cover"
+#     - "weather/wind_speed"
+#     - "weather/ambient_temperature"

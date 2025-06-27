@@ -1,0 +1,8 @@
+---
+# handlers file for roles/dns-common
+
+- name: restart_dnsmasq
+  systemd:
+    name: dnsmasq
+    state: restarted
+    enabled: yes

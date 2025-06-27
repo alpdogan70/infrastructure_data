@@ -1,0 +1,14 @@
+---
+- name: Configure Influx CLI with token
+  shell: |
+    influx config create \
+      --config-name default \
+      --host-url http://localhost:8086 \
+      --org {{ influxdb_org }} \
+      --token {{ influxdb_generated_token | default(setup_result.json.auth.token) }} \
+      --active
+  become: true
+  become_user: influxdb
+  environment:
+    HOME: /var/lib/influxdb
+  when: influxdb_generated_token is defined or setup_result.json.auth.token is defined

@@ -1,0 +1,36 @@
+{
+  "api_config": {
+    "provider": "openweathermap",
+    "api_key": "{{ external_apis.weather.api_key | default('demo_key') }}",
+    "base_url": "http://api.openweathermap.org/data/2.5",
+    "units": "metric",
+    "timeout": 10
+  },
+  "location": {
+    "name": "Lyon, FR",
+    "latitude": 45.764,
+    "longitude": 4.836,
+    "timezone": "Europe/Paris"
+  },
+  "update_intervals": {
+    "current_weather_minutes": 15,
+    "forecast_weather_minutes": 60,
+    "historical_data_hours": 24
+  },
+  "data_retention": {
+    "current_data_days": 30,
+    "forecast_data_days": 7,
+    "historical_data_days": 365
+  },
+  "thresholds": {
+    "high_temperature_celsius": 30,
+    "low_temperature_celsius": 0,
+    "high_wind_speed_ms": 15,
+    "low_visibility_km": 2
+  },
+  "backup_config": {
+    "enable_demo_mode": true,
+    "demo_data_variation_percent": 20,
+    "fallback_on_api_failure": true
+  }
+}

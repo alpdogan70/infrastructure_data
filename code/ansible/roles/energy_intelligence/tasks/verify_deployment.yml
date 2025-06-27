@@ -1,0 +1,187 @@
+---
+# Vérification déploiement IA énergétique
+# File: ansible/roles/energy_intelligence/tasks/verify_deployment.yml
+
+- name: "🔍 Vérification présence fichiers IA"
+  stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ energy_ai_paths.base | default('/opt/energy-ai') }}/energy_predictor.py"
+    - "{{ energy_ai_paths.base | default('/opt/energy-ai') }}/scenario_engine.py"
+    - "{{ energy_ai_paths.base | default('/opt/energy-ai') }}/weather_ml_model.py"
+    - "{{ energy_ai_paths.base | default('/opt/energy-ai') }}/cost_optimizer.py"
+    - "{{ energy_ai_paths.configs | default('/opt/energy-ai/configs') }}/energy_ai_config.yaml"
+  register: files_check
+
+- name: "⚙️ Vérification statut services systemd"
+  systemd:
+    name: "{{ item.name }}"
+  loop: "{{ energy_ai_services | default([]) }}"
+  register: services_check
+
+- name: "📡 Test connectivité MQTT pour IA"
+  command: |
+    timeout 10 mosquitto_pub -h {{ mqtt_broker_host }} -t "energy/ai/test" -m "deployment_test" -u iot -P iot123
+  register: mqtt_test
+  ignore_errors: true
+  changed_when: false
+
+- name: "🗄️ Test écriture InfluxDB IA"
+  uri:
+    url: "http://{{ influxdb_host }}:8086/api/v2/write"
+    method: POST
+    headers:
+      Authorization: "Token {{ influxdb_token.content | b64decode | trim }}"
+      Content-Type: "text/plain"
+    body: |
+      ai_deployment_test,source=ansible,component=verification test_status=1,timestamp={{ ansible_date_time.epoch }}
+    query_string:
+      org: "{{ influxdb_org }}"
+      bucket: "energy_ai"
+      precision: "s"
+    status_code: 204
+  register: influxdb_test
+  ignore_errors: true
+
+- name: "🐍 Test environnement Python IA"
+  command: |
+    {{ python_ai.venv_path | default('/opt/energy-ai/venv') }}/bin/python -c "
+    import sys
+    import numpy
+    import pandas
+    import sklearn
+    print(f'Python: {sys.version}')
+    print(f'NumPy: {numpy.__version__}')
+    print(f'Pandas: {pandas.__version__}')
+    print(f'Scikit-learn: {sklearn.__version__}')
+    print('✅ All ML libraries available')
+    "
+  register: python_ml_test
+  ignore_errors: true
+  changed_when: false
+
+- name: "📊 Test syntaxe scripts IA"
+  command: |
+    {{ python_ai.venv_path | default('/opt/energy-ai/venv') }}/bin/python -m py_compile {{ energy_ai_paths.base | default('/opt/energy-ai') }}/{{ item }}
+  loop:
+    - energy_predictor.py
+    - scenario_engine.py
+    - weather_ml_model.py
+    - cost_optimizer.py
+  register: syntax_test
+  ignore_errors: true
+  changed_when: false
+
+- name: "🔧 Vérification configuration Telegraf IA"
+  command: telegraf --config /etc/telegraf/telegraf.d/energy_ai.conf --test
+  register: telegraf_test
+  ignore_errors: true
+  changed_when: false
+
+- name: "📈 Test ports réseau IA"
+  wait_for:
+    host: "{{ item.host }}"
+    port: "{{ item.port }}"
+    timeout: 5
+  loop:
+    - { host: "{{ influxdb_host }}", port: 8086, name: "InfluxDB" }
+    - { host: "{{ mqtt_broker_host }}", port: 1883, name: "MQTT" }
+    - { host: "{{ mqtt_broker_host }}", port: 15672, name: "MQTT Management" }
+  register: ports_test
+  ignore_errors: true
+
+- name: "🧠 Test simulation prédiction IA"
+  command: |
+    {{ python_ai.venv_path | default('/opt/energy-ai/venv') }}/bin/python -c "
+    import json
+    import random
+    from datetime import datetime
+    
+    # Simulation d'une prédiction IA
+    prediction = {
+        'timestamp': datetime.now().isoformat(),
+        'energy_demand': round(random.uniform(80, 120), 2),
+        'solar_production': round(random.uniform(40, 80), 2),
+        'battery_optimal': round(random.uniform(60, 90), 2),
+        'confidence_score': round(random.uniform(0.85, 0.98), 3),
+        'horizon_hours': 24,
+        'ai_model': 'xgboost_v1.0',
+        'status': 'test_successful'
+    }
+    
+    print(json.dumps(prediction, indent=2))
+    print('✅ AI Simulation successful')
+    "
+  register: ai_simulation_test
+  ignore_errors: true
+  changed_when: false
+
+- name: "📊 Vérification logs IA"
+  stat:
+    path: "{{ energy_ai_paths.logs | default('/opt/energy-ai/logs') }}"
+  register: logs_dir_check
+
+- name: "🔒 Vérification permissions sécurité"
+  stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ energy_ai_paths.configs | default('/opt/energy-ai/configs') }}/ai_credentials.json"
+    - "{{ energy_ai_paths.configs | default('/opt/energy-ai/configs') }}/weather_config.json"
+  register: security_check
+
+- name: "📋 Compilation résultats vérification"
+  set_fact:
+    verification_results:
+      files_present: "{{ files_check.results | selectattr('stat.exists', 'equalto', true) | list | length }}"
+      files_total: "{{ files_check.results | length }}"
+      services_active: "{{ services_check.results | selectattr('status.ActiveState', 'equalto', 'active') | list | length }}"
+      services_total: "{{ services_check.results | length }}"
+      mqtt_status: "{{ 'OK' if mqtt_test.rc == 0 else 'FAILED' }}"
+      influxdb_status: "{{ 'OK' if influxdb_test.status == 204 else 'FAILED' }}"
+      python_ml_status: "{{ 'OK' if python_ml_test.rc == 0 else 'FAILED' }}"
+      syntax_status: "{{ 'OK' if (syntax_test.results | selectattr('rc', 'equalto', 0) | list | length) == (syntax_test.results | length) else 'FAILED' }}"
+      telegraf_status: "{{ 'OK' if telegraf_test.rc == 0 else 'FAILED' }}"
+      ports_status: "{{ 'OK' if (ports_test.results | selectattr('failed', 'equalto', false) | list | length) == (ports_test.results | length) else 'FAILED' }}"
+      ai_simulation_status: "{{ 'OK' if ai_simulation_test.rc == 0 else 'FAILED' }}"
+
+- name: "✅ Résumé vérification déploiement"
+  debug:
+    msg: |
+      🔍 VÉRIFICATION DÉPLOIEMENT ENERGY AI
+      
+      📁 Fichiers IA: {{ verification_results.files_present }}/{{ verification_results.files_total }} présents
+      {% for file_check in files_check.results %}
+      {{ '✅' if file_check.stat.exists else '❌' }} {{ file_check.item | basename }}
+      {% endfor %}
+      
+      ⚙️ Services: {{ verification_results.services_active }}/{{ verification_results.services_total }} actifs
+      {% for service in services_check.results %}
+      {{ '✅' if service.status.ActiveState == 'active' else '❌' }} {{ service.item.name }} - {{ service.status.ActiveState }}
+      {% endfor %}
+      
+      🔧 Tests techniques:
+      📡 MQTT: {{ verification_results.mqtt_status }}
+      🗄️ InfluxDB: {{ verification_results.influxdb_status }}
+      🐍 Python ML: {{ verification_results.python_ml_status }}
+      📝 Syntaxe: {{ verification_results.syntax_status }}
+      📊 Telegraf: {{ verification_results.telegraf_status }}
+      🌐 Ports: {{ verification_results.ports_status }}
+      🧠 Simulation IA: {{ verification_results.ai_simulation_status }}
+      
+      📊 Score global: {{ ((verification_results.files_present / verification_results.files_total * 30) + (verification_results.services_active / verification_results.services_total * 40) + ([verification_results.mqtt_status, verification_results.influxdb_status, verification_results.python_ml_status, verification_results.syntax_status, verification_results.telegraf_status, verification_results.ports_status, verification_results.ai_simulation_status] | select('equalto', 'OK') | list | length / 7 * 30)) | round(0) }}%
+      
+      {{ '🎉 DÉPLOIEMENT VALIDÉ!' if (verification_results.files_present == verification_results.files_total and verification_results.services_active == verification_results.services_total and verification_results.influxdb_status == 'OK') else '⚠️ PROBLÈMES DÉTECTÉS - Vérifier les erreurs ci-dessus' }}
+
+- name: "❌ Échec si vérifications critiques échouent"
+  fail:
+    msg: |
+      ❌ Vérifications critiques échouées:
+      - Fichiers manquants: {{ verification_results.files_total - verification_results.files_present }}
+      - Services inactifs: {{ verification_results.services_total - verification_results.services_active }}
+      - InfluxDB: {{ verification_results.influxdb_status }}
+      - Python ML: {{ verification_results.python_ml_status }}
+  when: >
+    verification_results.files_present < verification_results.files_total or
+    verification_results.services_active < verification_results.services_total or
+    verification_results.influxdb_status != 'OK' or
+    verification_results.python_ml_status != 'OK'

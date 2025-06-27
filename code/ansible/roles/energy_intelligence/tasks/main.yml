@@ -1,0 +1,176 @@
+---
+# Tâches principales Intelligence Énergétique
+# File: ansible/roles/energy_intelligence/tasks/main.yml
+
+- name: "🧠 Déploiement Intelligence Énergétique - Phase {{ energy_ai.version }}"
+  debug:
+    msg: |
+      Démarrage du déploiement de l'intelligence énergétique
+      Version: {{ energy_ai.version }}
+      Environnement: {{ energy_ai.environment }}
+
+# ================== PHASE 1: PRÉPARATION ==================
+
+- name: "📋 Vérification prérequis système"
+  include_tasks: verify_prerequisites.yml
+  tags: ['prerequisites']
+
+- name: "📦 Installation dépendances IA/ML"
+  include_tasks: install_dependencies.yml
+  tags: ['dependencies']
+
+# ================== PHASE 2: INFRASTRUCTURE ==================
+
+- name: "🏗️ Création structure répertoires IA"
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - "{{ energy_ai_paths.base | default('/opt/energy-ai') }}"
+    - "{{ energy_ai_paths.models | default('/opt/energy-ai/models') }}"
+    - "{{ energy_ai_paths.data | default('/opt/energy-ai/data') }}"
+    - "{{ energy_ai_paths.logs | default('/opt/energy-ai/logs') }}"
+    - "{{ energy_ai_paths.configs | default('/opt/energy-ai/configs') }}"
+    - "{{ energy_ai_paths.scenarios | default('/opt/energy-ai/scenarios') }}"
+  tags: ['infrastructure']
+
+- name: "🐍 Création environnement Python IA"
+  command: "python{{ python_ai.version | default('3') }} -m venv {{ python_ai.venv_path | default('/opt/energy-ai/venv') }}"
+  args:
+    creates: "{{ python_ai.venv_path | default('/opt/energy-ai/venv') }}"
+  tags: ['python']
+
+- name: "📦 Mise à jour pip dans l'environnement virtuel"
+  pip:
+    name: pip
+    state: latest
+    virtualenv: "{{ python_ai.venv_path | default('/opt/energy-ai/venv') }}"
+  tags: ['python']
+
+- name: "📋 Création fichier requirements IA"
+  copy:
+    dest: "{{ python_ai.venv_path | default('/opt/energy-ai/venv') }}/requirements_ai.txt"
+    content: |
+      # Requirements Intelligence Énergétique
+      
+      # ================== CORE MACHINE LEARNING ==================
+      numpy>=1.24.3,<2.0
+      pandas>=2.0.3,<3.0
+      scikit-learn>=1.3.0,<2.0
+      scipy>=1.10.0,<2.0
+      
+      # ================== GRADIENT BOOSTING ==================
+      xgboost>=1.7.6,<2.0
+      lightgbm>=4.0.0,<5.0
+      
+      # ================== TIME SERIES & FORECASTING ==================
+      statsmodels>=0.14.0,<1.0
+      pmdarima>=2.0.3,<3.0
+      
+      # ================== DATA VISUALIZATION ==================
+      matplotlib>=3.7.1,<4.0
+      seaborn>=0.12.2,<1.0
+      plotly>=5.15.0,<6.0
+      
+      # ================== COMMUNICATION & APIs ==================
+      requests>=2.31.0,<3.0
+      paho-mqtt>=1.6.1,<2.0
+      influxdb-client>=1.36.1,<2.0
+      aiohttp>=3.8.5,<4.0
+      
+      # ================== SYSTEM & MONITORING ==================
+      psutil>=5.9.5,<6.0
+      schedule>=1.2.0,<2.0
+      python-dateutil>=2.8.2,<3.0
+      
+      # ================== UTILITIES ==================
+      joblib>=1.3.1,<2.0
+      python-dotenv>=1.0.0,<2.0
+      click>=8.1.7,<9.0
+      
+      # ================== WEATHER & EXTERNAL APIs ==================
+      pyowm>=3.3.0,<4.0
+      geocoder>=1.38.1,<2.0
+      
+      # ================== OPTIMIZATION ==================
+      cvxpy>=1.3.2,<2.0
+      pulp>=2.7.0,<3.0
+      
+      # ================== PERFORMANCE ==================
+      numba>=0.57.1,<1.0
+      
+      # ================== LOGGING & MONITORING ==================
+      structlog>=23.1.0,<24.0
+      prometheus-client>=0.17.1,<1.0
+    owner: root
+    group: root
+    mode: '0644'
+  tags: ['python']
+
+- name: "📚 Installation packages Python ML"
+  pip:
+    requirements: "{{ python_ai.venv_path | default('/opt/energy-ai/venv') }}/requirements_ai.txt"
+    virtualenv: "{{ python_ai.venv_path | default('/opt/energy-ai/venv') }}"
+    state: present
+    extra_args: "--no-cache-dir --timeout 300"
+  register: pip_install_result
+  retries: 2
+  delay: 30
+  until: pip_install_result is succeeded
+  tags: ['python', 'ml']
+
+# ================== PHASE 3: MOTEURS IA ==================
+
+- name: "🧠 Déploiement moteurs IA énergétique"
+  include_tasks: deploy_ai_engines.yml
+  tags: ['ai_engines']
+
+# ================== PHASE 4: SERVICES SYSTÈME ==================
+
+- name: "⚙️ Configuration services système"
+  include_tasks: configure_services.yml
+  tags: ['services']
+
+# ================== PHASE 5: TELEGRAF ==================
+
+- name: "📡 Configuration Telegraf IA"
+  include_tasks: configure_telegraf_ai.yml
+  tags: ['telegraf']
+
+# ================== PHASE 6: INFLUXDB ==================
+
+- name: "🗄️ Configuration buckets InfluxDB IA"
+  include_tasks: configure_influxdb_ai.yml
+  tags: ['influxdb']
+
+# ================== PHASE 7: DASHBOARDS ==================
+
+- name: "📊 Déploiement dashboards Grafana IA"
+  include_tasks: setup_dashboards.yml
+  tags: ['dashboards']
+
+# ================== PHASE 8: DÉMARRAGE ==================
+
+- name: "🚀 Démarrage et activation services IA"
+  systemd:
+    name: "{{ item.name }}"
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  loop: "{{ energy_ai_services }}"
+  tags: ['start_services']
+
+# ================== PHASE 9: VÉRIFICATION ==================
+
+- name: "✅ Vérification déploiement"
+  include_tasks: verify_deployment.yml
+  tags: ['verification']
+
+# ================== PHASE 10: RAPPORT ==================
+
+- name: "📋 Génération rapport déploiement"
+  include_tasks: generate_report.yml
+  tags: ['report']

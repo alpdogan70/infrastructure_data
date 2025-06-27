@@ -1,0 +1,79 @@
+---
+# tasks file for roles/logging/vector
+- name: create group vector
+  ansible.builtin.group:
+    name: vector
+    system: yes
+    state: present
+
+- name: create user vector
+  ansible.builtin.user:
+    name: vector
+    system: yes
+    shell: /sbin/nologin
+    state: present
+    groups: adm
+    append: true
+
+- name: create directory for vector agent data
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: 0750
+    owner: vector
+    group: vector
+    recurse: yes
+  loop:
+  - "{{ vector_dir_data }}"
+  - "{{ vector_dir_config }}"
+
+- name: check if vector exists
+  ansible.builtin.stat:
+    path: "{{ vector_binary_path }}/vector"
+  register: __vector_exists
+
+- name: if vector exists get version
+  ansible.builtin.shell: "cat /etc/systemd/system/vector.service | grep Version | sed s/'.*Version '//g"
+  register: __vector_get_version
+  when: __vector_exists.stat.exists == true
+  changed_when: false
+
+- name: download vector
+  ansible.builtin.unarchive:
+    src: https://packages.timber.io/vector/{{ vector_version }}/vector-{{ vector_version }}-x86_64-unknown-linux-gnu.tar.gz        
+    dest: "{{ vector_binary_path }}"
+    extra_opts:
+    - ./vector-x86_64-unknown-linux-gnu/bin/vector
+    - --strip-components=3
+    remote_src: yes
+    mode: 0750
+    owner: vector
+    group: vector
+  when: not __vector_exists.stat.exists or not __vector_get_version.stdout == vector_version
+
+- name: add systemd service for vector
+  template:
+    src: vector.service.j2
+    dest: "/etc/systemd/system/vector.service"
+    owner: root
+    group: root
+    mode: 0750
+  notify: restart_vector
+
+- name: add vector pipelines
+  template:
+    src: "{{ item }}"
+    dest: "/etc/vector/{{ item | basename }}"
+    owner: vector
+    group: vector
+    mode: 0750
+  with_fileglob:
+    - templates/configs/*.yaml
+  when: item | basename | replace('.yaml','') in vector_list
+  notify: restart_vector
+
+- name: start vector
+  service:
+    name: vector
+    state: started
+    enabled: yes

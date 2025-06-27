@@ -1,0 +1,19 @@
+---
+# defaults file for roles/vmagent
+vmagent_dir_disk_data: ""
+vmagent_version: 1.91.3
+vmagent_dir_data: "{{ vmagent_dir_disk_data }}/var/lib/vmagent"
+vmagent_dir_config: "/etc/vmagent"
+vmagent_remotewrite: "127.0.0.1:8428"
+vmagent_scrape_interval: 10s
+vmagent_env: dev
+vmagent_var_config:
+  global:
+    scrape_interval: "{{ vmagent_scrape_interval }}"
+    external_labels:
+      env: '{{ vmagent_env }}'
+
+vmalert_dir_config: "/etc/vmalert"
+vmalert_remotewrite: "127.0.0.1:8428"
+vmalert_remote: ""
+vmalert_grafana: ""

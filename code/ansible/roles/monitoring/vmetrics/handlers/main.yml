@@ -1,0 +1,9 @@
+---
+# handlers file for roles/vmetrics
+
+- name: restart_vmetrics
+  systemd:
+    name: vmetrics
+    state: restarted
+    enabled: yes
+    daemon_reload: yes

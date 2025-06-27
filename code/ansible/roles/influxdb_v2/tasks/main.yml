@@ -1,0 +1,6 @@
+---
+- import_tasks: install.yml
+- import_tasks: setup.yml
+- import_tasks: cli.yml
+- import_tasks: buckets.yml
+- import_tasks: export_token.yml

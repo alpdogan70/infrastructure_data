@@ -1,0 +1,287 @@
+---
+- name: Add Telegraf repository key
+  apt_key:
+    url: https://repos.influxdata.com/influxdata-archive_compat.key
+    state: present
+
+- name: Add Telegraf repository
+  apt_repository:
+    repo: "deb https://repos.influxdata.com/debian stable main"
+    state: present
+    filename: telegraf
+
+- name: Install Telegraf
+  apt:
+    name: telegraf
+    state: present
+    update_cache: yes
+
+- name: Wait for InfluxDB to be ready
+  wait_for:
+    host: "{{ influxdb_host }}"
+    port: 8086
+    delay: 5
+    timeout: 60
+
+- name: Get InfluxDB token from InfluxDB server
+  slurp:
+    src: /etc/influxdb2/admin-token
+  register: influxdb_token
+  delegate_to: "{{ groups['meta-app_influxdb'][0] }}"
+  become: yes
+  retries: 3
+  delay: 10
+  until: influxdb_token is not failed
+
+- name: Create Telegraf configuration directory
+  file:
+    path: /etc/telegraf/telegraf.d
+    state: directory
+    owner: telegraf
+    group: telegraf
+    mode: '0755'
+
+# Configuration principale
+- name: Configure Telegraf main config
+  template:
+    src: telegraf.conf.j2
+    dest: /etc/telegraf/telegraf.conf
+    owner: telegraf
+    group: telegraf
+    mode: '0644'
+  notify: restart telegraf
+
+# Configurations IoT existantes
+- name: Configure MQTT consumer for IoT sensors
+  template:
+    src: mqtt_consumer.conf.j2
+    dest: /etc/telegraf/telegraf.d/mqtt_consumer.conf
+    owner: telegraf
+    group: telegraf
+    mode: '0644'
+  notify: restart telegraf
+
+- name: Configure additional system inputs
+  template:
+    src: additional_inputs.conf.j2
+    dest: /etc/telegraf/telegraf.d/additional_inputs.conf
+    owner: telegraf
+    group: telegraf
+    mode: '0644'
+  notify: restart telegraf
+
+- name: Configure monitoring outputs
+  template:
+    src: monitoring.conf.j2
+    dest: /etc/telegraf/telegraf.d/monitoring.conf
+    owner: telegraf
+    group: telegraf
+    mode: '0644'
+  notify: restart telegraf
+
+# NOUVELLES configurations datacenter
+- name: Configure Datacenter Energy MQTT inputs
+  template:
+    src: datacenter_energy.conf.j2
+    dest: /etc/telegraf/telegraf.d/datacenter_energy.conf
+    owner: telegraf
+    group: telegraf
+    mode: '0644'
+  notify: restart telegraf
+
+- name: Configure Datacenter outputs
+  template:
+    src: datacenter_outputs.conf.j2
+    dest: /etc/telegraf/telegraf.d/datacenter_outputs.conf
+    owner: telegraf
+    group: telegraf
+    mode: '0644'
+  notify: restart telegraf
+
+# Démarrage et tests
+- name: Enable and start Telegraf
+  systemd:
+    name: telegraf
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Verify Telegraf is running
+  systemd:
+    name: telegraf
+    state: started
+  register: telegraf_status
+
+- name: Test Telegraf configuration
+  become: true
+  command: telegraf --test --config /etc/telegraf/telegraf.conf --config-directory /etc/telegraf/telegraf.d
+  register: telegraf_test
+  failed_when: false
+  changed_when: false
+
+- name: ✅ Telegraf configuration is valid
+  debug:
+    msg: |
+      ✔️ Telegraf configuration loaded successfully
+      📊 Configured for IoT sensors AND datacenter energy management
+      Topics monitored:
+      - sensors/+/+ (IoT sensors)
+      - devices/+/+ (IoT devices)
+      - energy/solar/datacenter/+ (Solar production)
+      - energy/battery/datacenter/+ (Battery system)
+      - energy/consumption/datacenter/+ (Datacenter load)
+      - energy/grid/datacenter/+ (Grid connection)
+      - energy/optimization/datacenter/+ (Energy optimization)
+  when: telegraf_test.rc == 0
+
+- name: ℹ️ Telegraf test info
+  debug:
+    msg: "Telegraf config loaded, waiting for MQTT messages to arrive"
+  when: telegraf_test.rc != 0 and telegraf_test.stderr == ""
+
+- name: ❌ Telegraf configuration error
+  debug:
+    msg: "{{ telegraf_test.stderr_lines }}"
+  when: telegraf_test.rc != 0 and telegraf_test.stderr != ""
+
+# Modification à ajouter dans votre ansible/roles/telegraf_dedicated/tasks/main.yml
+# Après vos tâches existantes
+
+# 🆕 AJOUTER cette tâche pour la configuration Energy AI
+- name: Configure Energy AI topics in Telegraf
+  template:
+    src: telegraf_energy_ai.conf.j2
+    dest: /etc/telegraf/telegraf.d/energy_ai.conf
+    owner: telegraf
+    group: telegraf
+    mode: '0644'
+    backup: yes
+  notify: restart telegraf
+  when: enable_energy_ai_topics | default(false)
+  tags: ['telegraf', 'energy_ai']
+
+# 🆕 AJOUTER cette tâche pour vérifier la configuration Energy AI
+- name: Validate Energy AI Telegraf configuration
+  command: telegraf --config /etc/telegraf/telegraf.d/energy_ai.conf --test
+  register: telegraf_energy_ai_test
+  failed_when: telegraf_energy_ai_test.rc != 0
+  changed_when: false
+  when: enable_energy_ai_topics | default(false)
+  tags: ['telegraf', 'energy_ai', 'validation']
+
+# 🔄 MODIFIER votre tâche de debug existante pour inclure Energy AI
+- name: Display enhanced Telegraf configuration status
+  debug:
+    msg: |
+      ✅ Configuration Telegraf terminée:
+      
+      📡 MQTT Broker: {{ telegraf_mqtt_broker }}:1883
+      🗄️ InfluxDB: {{ influxdb_url }}
+      🏢 Organisation: {{ influxdb_org }}
+      
+      📊 Buckets configurés:
+      - {{ influxdb_bucket }} (IoT sensors)
+      - telegraf (system metrics)
+      {% for bucket in influxdb_energy_ai_buckets | default([]) %}
+      - {{ bucket.name }} ({{ bucket.description }})
+      {% endfor %}
+      
+      🎯 Topics MQTT:
+      - Capteurs IoT: sensors/+/+
+      - BMC: bmc/+/+
+      {% if enable_energy_ai_topics | default(false) %}
+      - Energy AI: {{ energy_ai_mqtt.topics.predictions }}/+
+      - Scénarios: {{ energy_ai_mqtt.topics.scenarios }}/+
+      - Recommandations: {{ energy_ai_mqtt.topics.recommendations }}
+      {% endif %}
+      
+      ✅ Validation Energy AI: {{ 'RÉUSSIE' if telegraf_energy_ai_test.rc == 0 else 'ÉCHOUÉE' if telegraf_energy_ai_test is defined else 'DÉSACTIVÉE' }}
+
+
+# # Modification de votre rôle telegraf_dedicated existant
+# # 🔄 AJOUTER cette tâche dans roles/telegraf_dedicated/tasks/main.yml
+
+# # ... vos tâches existantes ...
+
+# # 🆕 NOUVEAU : Configuration Energy AI Topics (à ajouter à la fin)
+# - name: Configure Energy AI MQTT topics in Telegraf
+#   blockinfile:
+#     path: /etc/telegraf/telegraf.conf
+#     marker: "# {mark} ANSIBLE MANAGED BLOCK - ENERGY AI INTEGRATION"
+#     block: |
+#       # ================== ENERGY AI INTEGRATION ==================
+      
+#       # AI Predictions and Results
+#       [[inputs.mqtt_consumer]]
+#         servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+#         topics = [
+#           "energy/ai/predictions/+",
+#           "energy/ai/optimization/results",
+#           "energy/ai/recommendations",
+#           "energy/ai/performance"
+#         ]
+#         topic_tag = "topic"
+#         qos = 1
+#         connection_timeout = "30s"
+#         username = "iot"
+#         password = "iot123"
+#         client_id = "telegraf-energy-ai"
+        
+#         data_format = "json"
+#         tag_keys = ["ai_model", "prediction_type", "confidence_level"]
+#         json_time_key = "timestamp"
+#         json_time_format = "2006-01-02T15:04:05Z07:00"
+#         name_override = "energy_ai_data"
+        
+#         [inputs.mqtt_consumer.tags]
+#           source = "energy_ai"
+#           component = "predictions"
+      
+#       # Energy Scenarios Execution
+#       [[inputs.mqtt_consumer]]
+#         servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+#         topics = [
+#           "energy/scenarios/executed",
+#           "energy/scenarios/status", 
+#           "energy/scenarios/actions/+"
+#         ]
+#         topic_tag = "topic"
+#         qos = 1
+#         connection_timeout = "30s"
+#         username = "iot"
+#         password = "iot123"
+#         client_id = "telegraf-energy-scenarios"
+        
+#         data_format = "json"
+#         tag_keys = ["scenario_name", "action_type", "priority"]
+#         json_time_key = "timestamp"
+#         json_time_format = "2006-01-02T15:04:05Z07:00"
+#         name_override = "energy_scenarios_data"
+        
+#         [inputs.mqtt_consumer.tags]
+#           source = "energy_scenarios"
+#           component = "automation"
+      
+#       # ================== ENERGY AI OUTPUTS ==================
+      
+#       # Output to Energy AI bucket
+#       [[outputs.influxdb_v2]]
+#         urls = ["{{ influxdb_url }}"]
+#         token = "{{ influxdb_token.content | b64decode | trim }}"
+#         organization = "{{ influxdb_org }}"
+#         bucket = "energy_ai"
+#         timeout = "5s"
+#         namepass = ["energy_ai_data"]
+      
+#       # Output to Scenarios bucket
+#       [[outputs.influxdb_v2]]
+#         urls = ["{{ influxdb_url }}"]
+#         token = "{{ influxdb_token.content | b64decode | trim }}"
+#         organization = "{{ influxdb_org }}"
+#         bucket = "energy_scenarios"
+#         timeout = "5s"
+#         namepass = ["energy_scenarios_data"]
+        
+#     backup: yes
+#   notify: restart telegraf
+#   when: enable_energy_ai_topics | default(false)

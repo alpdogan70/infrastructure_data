@@ -1,0 +1,23 @@
+- name: Get node ip and their PodCidr
+  hosts: k8sm1
+  become: yes
+  tasks:
+    - name: execute kubectl
+      shell: kubectl get nodes -o jsonpath='{range .items[*]}{.spec.podCIDR} {.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}'
+      register: __kubectl_routes_output
+
+    - name: Définir un fact personnalisé pour les routes
+      set_fact:
+        node_routes: "{{ __kubectl_routes_output.stdout_lines | map('split', ' ') | map('join', ',gateway=') }}"
+
+    - name: Afficher les routes générées
+      debug:
+        var: node_routes
+
+- name: Run locally the openstack command
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Add k8s routes to our router
+      command: openstack router add route --route destination={{ item }} rt1
+      with_items: "{{ hostvars['k8sm1']['node_routes'] }}"

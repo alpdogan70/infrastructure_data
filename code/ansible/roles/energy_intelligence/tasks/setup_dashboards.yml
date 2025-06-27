@@ -1,0 +1,183 @@
+---
+# Configuration dashboards Grafana IA
+# File: ansible/roles/energy_intelligence/tasks/setup_dashboards.yml
+
+- name: "📊 Déploiement Dashboard Principal IA Énergétique"
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: grafana-dashboard-energy-ai
+        namespace: monitoring
+        labels:
+          apps: prometheus-operator-grafana
+          grafana_dashboard: "1"
+      data:
+        energy-ai.json: "{{ lookup('template', 'dashboards/dashboard_energy_ai.yml.j2') | from_yaml | to_nice_json }}"
+  tags: ['main_dashboard']
+
+- name: "🔮 Déploiement Dashboard Prédictions IA"
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: grafana-dashboard-ai-predictions
+        namespace: monitoring
+        labels:
+          apps: prometheus-operator-grafana
+          grafana_dashboard: "1"
+      data:
+        ai-predictions.json: "{{ lookup('template', 'dashboards/dashboard_ai_predictions.yml.j2') | from_yaml | to_nice_json }}"
+  tags: ['predictions_dashboard']
+
+- name: "🎯 Déploiement Dashboard Scénarios Énergétiques"
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: grafana-dashboard-energy-scenarios
+        namespace: monitoring
+        labels:
+          apps: prometheus-operator-grafana
+          grafana_dashboard: "1"
+      data:
+        energy-scenarios.json: "{{ lookup('template', 'dashboards/dashboard_energy_scenarios.yml.j2') | from_yaml | to_nice_json }}"
+  tags: ['scenarios_dashboard']
+
+- name: "📈 Déploiement Dashboard Performance IA"
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: grafana-dashboard-ai-performance
+        namespace: monitoring
+        labels:
+          apps: prometheus-operator-grafana
+          grafana_dashboard: "1"
+      data:
+        ai-performance.json: "{{ lookup('template', 'dashboards/dashboard_ai_performance.yml.j2') | from_yaml | to_nice_json }}"
+  tags: ['performance_dashboard']
+
+- name: "🌱 Déploiement Dashboard Empreinte Carbone"
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: grafana-dashboard-carbon-footprint
+        namespace: monitoring
+        labels:
+          apps: prometheus-operator-grafana
+          grafana_dashboard: "1"
+      data:
+        carbon-footprint.json: "{{ lookup('template', 'dashboards/dashboard_carbon_footprint.yml.j2') | from_yaml | to_nice_json }}"
+  tags: ['carbon_dashboard']
+
+- name: "⏳ Attente synchronisation dashboards Grafana"
+  pause:
+    seconds: 30
+    prompt: "Synchronisation des dashboards IA avec Grafana..."
+
+- name: "🔍 Vérification disponibilité dashboards"
+  uri:
+    url: "http://{{ grafana_host | default('localhost') }}:3000/api/search?query=energy"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ grafana_admin_token | default('admin') }}"
+    status_code: 200
+  register: grafana_dashboards_check
+  retries: 3
+  delay: 10
+
+- name: "📋 Liste des dashboards IA déployés"
+  set_fact:
+    deployed_ai_dashboards: "{{ grafana_dashboards_check.json | selectattr('title', 'match', '.*AI.*|.*Energy.*|.*Carbon.*') | map(attribute='title') | list }}"
+
+- name: "🔗 Génération liens dashboard"
+  set_fact:
+    dashboard_links:
+      main: "http://{{ ansible_default_ipv4.address }}/d/energy-ai-intelligence"
+      predictions: "http://{{ ansible_default_ipv4.address }}/d/ai-predictions"
+      scenarios: "http://{{ ansible_default_ipv4.address }}/d/energy-scenarios"
+      performance: "http://{{ ansible_default_ipv4.address }}/d/ai-performance"
+      carbon: "http://{{ ansible_default_ipv4.address }}/d/carbon-footprint"
+
+- name: "📊 Configuration alertes Grafana IA"
+  uri:
+    url: "http://{{ grafana_host | default('localhost') }}:3000/api/alert-rules"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ grafana_admin_token | default('admin') }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      title: "{{ item.title }}"
+      condition: "A"
+      data:
+        - refId: "A"
+          queryType: ""
+          relativeTimeRange:
+            from: 300
+            to: 0
+          datasourceUid: "InfluxDB_AI"
+          model:
+            query: "{{ item.query }}"
+      intervalSeconds: "{{ item.interval }}"
+      maxDataPoints: 43200
+      noDataState: "NoData"
+      execErrState: "Alerting"
+      for: "{{ item.for }}"
+      annotations:
+        description: "{{ item.description }}"
+        summary: "{{ item.summary }}"
+      labels:
+        team: "energy"
+        severity: "{{ item.severity }}"
+    status_code: [200, 201, 409]
+  loop:
+    - title: "AI Confidence Score Low"
+      query: 'from(bucket: "energy_ai") |> range(start: -5m) |> filter(fn: (r) => r._field == "confidence_score") |> mean()'
+      interval: 300
+      for: "5m"
+      severity: "warning"
+      description: "Le score de confiance IA est en dessous du seuil acceptable"
+      summary: "Confiance IA faible"
+    - title: "Energy Prediction Accuracy Drop"
+      query: 'from(bucket: "model_performance") |> range(start: -1h) |> filter(fn: (r) => r._field == "prediction_accuracy") |> mean()'
+      interval: 900
+      for: "15m"
+      severity: "critical"
+      description: "La précision des prédictions énergétiques a chuté significativement"
+      summary: "Précision prédictions dégradée"
+  register: grafana_alerts
+  ignore_errors: true
+  tags: ['alerts']
+
+- name: "📋 Résumé déploiement dashboards"
+  debug:
+    msg: |
+      ✅ Dashboards IA Grafana déployés avec succès:
+      
+      🎯 Dashboards disponibles:
+      {% for dashboard in grafana_ai_dashboards %}
+      📊 {{ dashboard.title }} - {{ dashboard.uid }}
+      {% endfor %}
+      
+      🔗 Liens d'accès:
+      🧠 Principal: {{ dashboard_links.main }}
+      🔮 Prédictions: {{ dashboard_links.predictions }}
+      🎬 Scénarios: {{ dashboard_links.scenarios }}
+      📈 Performance: {{ dashboard_links.performance }}
+      🌱 Carbone: {{ dashboard_links.carbon }}
+      
+      📊 Dashboards détectés: {{ deployed_ai_dashboards | length }}
+      🚨 Alertes configurées: {{ grafana_alerts.results | selectattr('status', 'in', [200, 201]) | list | length }}/2

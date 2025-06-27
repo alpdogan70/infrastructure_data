@@ -1,0 +1,12 @@
+- name: Install prerequisites
+  hosts: k8sm1
+  become: true
+  roles:
+    - kubernetes/kubernetes_tooling
+  vars:
+    kubernetes_openstack_username: "{{ lookup('ansible.builtin.env', 'OS_USERNAME') }}"
+    kubernetes_openstack_password: "{{ lookup('ansible.builtin.env', 'OS_PASSWORD') }}"
+    kubernetes_openstack_domain_name: "{{ lookup('ansible.builtin.env', 'OS_USER_DOMAIN_NAME') }}"
+    kubernetes_openstack_auth_url: "{{ lookup('ansible.builtin.env', 'OS_AUTH_URL') }}"
+    kubernetes_openstack_tenant_id: "{{ lookup('ansible.builtin.env', 'OS_PROJECT_ID') }}"
+    kubernetes_openstack_region: "{{ lookup('ansible.builtin.env', 'OS_REGION_NAME') }}" 

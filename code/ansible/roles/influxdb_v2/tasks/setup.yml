@@ -1,0 +1,39 @@
+---
+- name: Check if InfluxDB setup is needed
+  uri:
+    url: "http://localhost:8086/api/v2/setup"
+    method: GET
+  register: setup_status
+  failed_when: false
+
+- name: Run InfluxDB setup if allowed
+  uri:
+    url: "http://localhost:8086/api/v2/setup"
+    method: POST
+    body_format: json
+    body: >
+      {
+        "username": "{{ influxdb_admin_user }}",
+        "password": "{{ influxdb_admin_password }}",
+        "org": "{{ influxdb_org }}",
+        "bucket": "{{ influxdb_bucket }}",
+        "retentionPeriodSeconds": {{ influxdb_retention_seconds | default(2592000) | int }}
+      }
+    status_code: [200, 201]
+  register: setup_result
+  when:
+    - setup_status.json.allowed is defined
+    - setup_status.json.allowed == true
+
+- name: Save token from setup
+  copy:
+    content: "{{ setup_result.json.auth.token }}"
+    dest: "{{ influxdb_token_path }}"
+    owner: influxdb
+    group: influxdb
+    mode: '0600'
+  when:
+    - setup_result is defined
+    - setup_result.json is defined
+    - setup_result.json.auth is defined
+    - setup_result.json.auth.token is defined

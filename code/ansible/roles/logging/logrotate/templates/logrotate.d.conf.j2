@@ -1,0 +1,40 @@
+{{ ansible_managed | comment }}
+
+{{ item.path }} {
+
+    dateext
+    compress
+    missingok
+    notifempty
+
+{% if item.frequency is defined %}    {{ item.frequency }}{% else %}    daily{% endif %}
+
+{% if item.delaycompress is defined and item.delaycompress %}    delaycompress{% endif %}
+
+{% if item.number is defined %}    rotate {{ item.number }}{% else %}    rotate 15{% endif %}
+
+{% if item.minsize is defined %}    minsize {{ item.minsize }}{% endif %}
+
+{% if item.copylog is defined and item.copylog %}    copy{% endif %}
+
+{% if item.copytruncate is defined and item.copytruncate %}    copytruncate{% endif %}
+
+{% if item.create is defined and item.create %}    create{% if item.create_mode is defined %} {{ item.create_mode }}{% endif %}{% if item.create_user is defined %} {{ item.create_user }}{% endif %}{% if item.create_group is defined %} {{ item.create_group }}{% endif %}{% endif %}
+
+{% if item.sharedscripts is defined and item.sharedscripts %}    sharedscripts{% endif %}
+
+{% if item.dateformat is defined and item.dateformat %}    dateformat {{ item.dateformat }}{% endif %}
+
+{% if item.dateyesterday is defined and item.dateyesterday %}    dateyesterday{% endif %}
+
+{% if item.postrotate is defined %}
+    postrotate
+        {{ item.postrotate }}
+    endscript {% else %}
+
+    postrotate
+        [ ! -x /usr/lib/rsyslog/rsyslog-rotate ] || /usr/lib/rsyslog/rsyslog-rotate
+    endscript   
+    {% endif %}
+
+}

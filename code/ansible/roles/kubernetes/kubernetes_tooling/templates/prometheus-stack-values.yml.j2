@@ -1,0 +1,146 @@
+prometheus:
+  enabled: true
+  prometheusSpec:
+    remoteWrite:
+      - url: {{ kubernetes_helm_prometheus_prom_remote_write }}
+    retention: {{ kubernetes_helm_prometheus_stack_retention }}
+    replicas: {{ kubernetes_helm_prometheus_prom_replicas }}
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: {{ kubernetes_helm_prometheus_stack_sc }}
+          resources:
+            requests:
+              storage: {{ kubernetes_helm_prometheus_stack_storage_size }}
+    additionalScrapeConfigs:
+      - job_name: node_exporter
+        consul_sd_configs:
+        - server: 'consul.service.staner.consul:8500'
+          services:
+          - 'node_exporter'
+        relabel_configs:
+        - source_labels: ['__meta_consul_address']
+          regex:         '(.*)'
+          target_label:  '__address__'
+          replacement:   '${1}:9100'
+        - source_labels: [__meta_consul_node]
+          target_label: instance
+      - job_name: traefik
+        consul_sd_configs:
+        - server: 'consul.service.staner.consul:8500'
+          services:
+          - 'traefik_metrics'
+        relabel_configs:
+        - source_labels: ['__meta_consul_address']
+          regex:         '(.*)'
+          target_label:  '__address__'
+          replacement:   '${1}:9200'
+        - source_labels: [__meta_consul_node]
+          target_label: instance
+      - job_name: consul
+        consul_sd_configs:
+        - server: 'consul.service.staner.consul:8500'
+          services:
+          - 'consul'
+        metrics_path: '/v1/agent/metrics'
+        scheme: http
+        relabel_configs:
+        - source_labels: ['__meta_consul_address']
+          regex:         '(.*)'
+          target_label:  '__address__'
+          replacement:   '${1}:8500'
+        - source_labels: [__meta_consul_node]
+          target_label: instance
+      - job_name: consul_exporter
+        consul_sd_configs:
+        - server: 'consul.service.staner.consul:8500'
+          services:
+          - 'consul_exporter'
+        relabel_configs:
+        - source_labels: ['__meta_consul_address']
+          regex:         '(.*)'
+          target_label:  '__address__'
+          replacement:   '${1}:9107'
+        - source_labels: [__meta_consul_node]
+          target_label: instance
+      - job_name: postgresql_exporter
+        consul_sd_configs:
+        - server: 'consul.service.staner.consul:8500'
+          services:
+          - 'postgresql'
+        relabel_configs:
+        - source_labels: ['__meta_consul_address']
+          regex:         '(.*)'
+          target_label:  '__address__'
+          replacement:   '${1}:9187'
+        - source_labels: [__meta_consul_node]
+          target_label: instance
+nodeExporter:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+grafana:
+  enabled: true
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'default'
+          orgId: 1
+          folder: 'default'
+          type: file
+          disableDeletion: true
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+  dashboards:
+    default:
+      node-exporter:
+        datasource: VictoriaMetrics
+        url: https://raw.githubusercontent.com/rfrail3/grafana-dashboards/master/prometheus/node-exporter-full.json
+  additionalDataSources:
+  - name: VictoriaMetrics
+    url: {{ kubernetes_helm_prometheus_grafana_datasource }}
+    type: prometheus
+    access: proxy
+    isDefault: true
+  - name: VictoriaLogs
+    url: {{ kubernetes_helm_prometheus_grafana_datasource_logs }}
+    type: victorialogs-datasource
+    access: proxy
+    isDefault: false
+  deleteDatasources: 
+  - name: Prometheus
+    orgId: 1
+  sidecar:
+    datasources:
+      enabled: true
+      defaultDatasourceEnabled: false
+  persistence:
+    enabled: true
+    storageClassName: {{ kubernetes_helm_prometheus_stack_grafana_sc }}
+    size: 20Gi
+  service:
+    annotations:
+      consul.hashicorp.com/service-name: graf
+      consul.hashicorp.com/service-sync: "true"
+      consul.hashicorp.com/service-tags: |
+        traefik.enable=true,
+        traefik.http.routers.router-graf.entrypoints=http\,https,
+        traefik.http.routers.router-graf.rule=Host(`gx.tanerinfo.eu`),
+        traefik.http.routers.router-graf.service=graf,
+        traefik.http.routers.router-graf.middlewares=secure_headers@file\,to_https@file,
+        traefik.http.routers.router-graf.tls.certresolver=certs_gen
+
+  env:
+    GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: "victorialogs-datasource"
+  plugins:
+  - https://github.com/VictoriaMetrics/victorialogs-datasource/releases/download/v{{ kubernetes_helm_prometheus_stack_grafana_ds_vlogs_version }}/victorialogs-datasource-v{{ kubernetes_helm_prometheus_stack_grafana_ds_vlogs_version }}.zip;victorialogs-datasource
+
+  

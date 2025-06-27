@@ -1,0 +1,5 @@
+---
+# defaults file for roles/users
+users_default_account: "staner"
+users_servers_ssh_disallow: 
+  - gitlab1

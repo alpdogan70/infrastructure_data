@@ -1,0 +1,25 @@
+# File: consul_service_bmc/templates/bmc-ipmi.service.json.j2  
+{
+  "service": {
+    "name": "bmc-ipmi",
+    "tags": [
+      "bmc",
+      "ipmi",
+      "remote-management",
+      "power-control"
+    ],
+    "address": "{{ ansible_default_ipv4.address }}", 
+    "port": 623,
+    "meta": {
+      "protocol": "ipmi-over-lan",
+      "version": "2.0",
+      "authentication": "md5",
+      "environment": "{{ metadatas.environment }}"
+    },
+    "check": {
+      "tcp": "{{ ansible_default_ipv4.address }}:623",
+      "interval": "30s",
+      "timeout": "5s"
+    }
+  }
+}

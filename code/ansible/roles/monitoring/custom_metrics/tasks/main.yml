@@ -1,0 +1,36 @@
+---
+# tasks file for roles/monitoring/check_backups
+
+- name: install /opt/scripts
+  file:
+    path: /opt/scripts
+    state: directory
+    owner: root
+    group: root
+    mode: 0750
+
+- name: deploy check script
+  template:
+    src: custom-metrics.sh.j2
+    dest: /opt/scripts/custom-metrics.sh
+    owner: root
+    group: root
+    mode: 0750  
+
+- name: add a cron for custom metrics
+  template:
+    src: custom-metrics.j2
+    dest: /etc/cron.d/custom-metrics
+    owner: root
+    group: root
+    mode: 0750
+  
+- name: install /var/lib/cron
+  file:
+    path: "{{ item.dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { dir: "/var/lib/cron/", mode: "0755" }

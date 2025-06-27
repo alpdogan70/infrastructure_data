@@ -1,0 +1,22 @@
+# File: bmc-ipmi-simulator.service.j2
+[Unit]
+Description=BMC IPMI over LAN Simulator (Port 623)
+After=network.target bmc-core-simulator.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bmc-simulator
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/opt/bmc-simulator/venv/bin/python /opt/bmc-simulator/bmc_ipmi_simulator.py
+Restart=always
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+MemoryMax=128M
+CPUQuota=15%
+
+[Install]
+WantedBy=multi-user.target

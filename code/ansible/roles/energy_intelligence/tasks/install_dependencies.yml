@@ -1,0 +1,175 @@
+---
+# Installation dépendances IA/ML
+# File: ansible/roles/energy_intelligence/tasks/install_dependencies.yml
+
+- name: "📦 Mise à jour cache APT"
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: "🔧 Installation dépendances système pour IA/ML"
+  apt:
+    name:
+      # Python et outils de base
+      - "python{{ python_ai.version | default('3') }}"
+      - "python{{ python_ai.version | default('3') }}-dev"
+      - "python{{ python_ai.version | default('3') }}-venv"
+      - python3-pip
+      - python3-setuptools
+      - python3-wheel
+      - python3-venv
+      - python3-full
+      - build-essential
+      - pkg-config
+      - cmake
+      - git
+      
+      # Bibliothèques mathématiques pour ML
+      - libhdf5-dev
+      - libhdf5-serial-dev
+      - libnetcdf-dev
+      - libblas-dev
+      - liblapack-dev
+      - libatlas-base-dev
+      - gfortran
+      - libopenblas-dev
+      
+      # Dépendances pour TensorFlow/scikit-learn
+      - libffi-dev
+      - libssl-dev
+      - libjpeg-dev
+      - libpng-dev
+      - libfreetype6-dev
+      - zlib1g-dev
+      - liblzma-dev
+      - libbz2-dev
+      
+      # Outils système essentiels
+      - htop
+      - curl
+      - wget
+      - unzip
+      - zip
+      - rsync
+      - vim
+      - nano
+      
+      # Outils réseau
+      - net-tools
+      - iputils-ping
+      - telnet
+      - netcat-openbsd
+      
+    state: present
+    install_recommends: false
+
+- name: "📊 Installation outils monitoring et performance"
+  apt:
+    name:
+      - sysstat          # iostat, sar, etc.
+      - iotop            # I/O monitoring
+      - nethogs          # Network monitoring
+      - lsof             # List open files
+      - tree             # Directory tree
+      - tmux             # Terminal multiplexer
+      - screen           # Terminal sessions
+    state: present
+
+- name: "🔍 Vérification version Python IA"
+  command: "python{{ python_ai.version | default('3') }} --version"
+  register: python_version_check
+  changed_when: false
+
+- name: "📋 Affichage version Python installée"
+  debug:
+    msg: "🐍 Python IA installé: {{ python_version_check.stdout }}"
+
+- name: "🔧 Mise à jour pip dans l'environnement virtuel (sera créé plus tard)"
+  debug:
+    msg: "⚠️ Pip sera mis à jour lors de la création de l'environnement virtuel Python"
+
+- name: "🧮 Test disponibilité packages Python système"
+  command: |
+    python{{ python_ai.version | default('3') }} -c "
+    try:
+        import venv
+        print('✅ Module venv disponible')
+    except ImportError:
+        print('❌ Module venv non disponible')
+    try:
+        import distutils.util
+        print('✅ Module distutils disponible')
+    except ImportError:
+        print('⚠️ Module distutils non disponible')
+    "
+  register: python_modules_check
+  failed_when: false
+  changed_when: false
+
+- name: "📈 Test capacités système ML"
+  command: |
+    python{{ python_ai.version | default('3') }} -c "
+    import sys
+    import platform
+    import multiprocessing
+    print(f'🐍 Python: {sys.version}')
+    print(f'🏗️ Architecture: {platform.machine()}')
+    print(f'🔧 CPU cores: {multiprocessing.cpu_count()}')
+    print(f'📦 Platform: {platform.platform()}')
+    "
+  register: ml_capabilities
+  changed_when: false
+
+- name: "🔍 Vérification espace disque disponible"
+  setup:
+    gather_subset: "!all,hardware"
+
+- name: "💾 Calcul espace disque"
+  set_fact:
+    disk_space_gb: "{{ (ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first / 1073741824) | round(1) }}"
+    disk_total_gb: "{{ (ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_total') | first / 1073741824) | round(1) }}"
+
+- name: "⚠️ Vérification espace disque suffisant"
+  assert:
+    that:
+      - disk_space_gb | float >= 5.0
+    fail_msg: |
+      ❌ Espace disque insuffisant: {{ disk_space_gb }}GB disponible
+      Minimum requis: 5GB pour l'installation IA/ML
+    success_msg: "✅ Espace disque suffisant: {{ disk_space_gb }}GB disponible"
+
+- name: "🧪 Test compilation basique"
+  command: |
+    echo '#include <stdio.h>
+    int main() { printf("Hello World\\n"); return 0; }' > /tmp/test.c &&
+    gcc /tmp/test.c -o /tmp/test &&
+    /tmp/test &&
+    rm -f /tmp/test.c /tmp/test
+  register: gcc_test
+  changed_when: false
+  failed_when: false
+
+- name: "🎯 Résumé installation dépendances"
+  debug:
+    msg: |
+      ✅ Installation dépendances IA/ML terminée avec succès
+      
+      🐍 Python: {{ python_version_check.stdout }}
+      🏗️ Architecture: {{ ml_capabilities.stdout_lines[1] | default('Non détectée') }}
+      🔧 CPU: {{ ml_capabilities.stdout_lines[2] | default('Non détecté') }}
+      💾 Espace disque: {{ disk_space_gb }}GB / {{ disk_total_gb }}GB
+      🧮 Modules Python: {{ python_modules_check.stdout | default('Test ignoré') }}
+      🔨 Compilation GCC: {{ 'OK' if gcc_test.rc == 0 else 'Erreur (non critique)' }}
+      
+      📦 Packages système installés:
+      ✅ Python {{ python_ai.version | default('3') }} + outils développement
+      ✅ python3-full (environnements virtuels Debian 12)
+      ✅ Bibliothèques mathématiques (BLAS, LAPACK, OpenBLAS)
+      ✅ Dépendances ML (HDF5, NetCDF, etc.)
+      ✅ Outils système et monitoring
+      ✅ Outils réseau et développement
+      
+      ⚠️ Note Debian 12: pip sera utilisé uniquement dans l'environnement virtuel
+      🚀 Système prêt pour l'installation de l'environnement Python IA
+
+

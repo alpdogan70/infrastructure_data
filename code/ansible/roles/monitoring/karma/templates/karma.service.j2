@@ -1,0 +1,13 @@
+[Unit]
+Description=karma Version  {{ karma_version }}
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User={{ karma_user }}
+Group={{ karma_user }}
+ExecStart=/usr/local/bin/karma --config.file {{ karma_dir_config  }}/karma.yml
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,281 @@
+vault_backups_consul_secret_key: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          32343632636663336537646233353638343238643265346130623063323364393636613062396462
+          3537643339306639646530323535656639636165386565310a616565326137313130383732376635
+          62643062643165326334353931626266633438666565333366653739323363383737636564643766
+          3131303731613236660a353962633666383837353963643463616132323632323231633835663366
+          61643738353064363538343335363230376261346563313664356161346165396638386136616533
+          3835376237313563306166663433366661653335616162303366
+backups_s3_secret_key: "7b8b302db75b492ebac242527a77b066"
+
+all_keycloak_database_user: keycloak
+all_keycloak_database_password: password
+all_keycloak_database_host: postgresql_primary.service.consul
+all_keycloak_database_db: keycloak
+all_keycloak_admin_user: staner
+all_keycloak_admin_user_password: password
+all_keycloak_url: https://k.tanerinfo.eu/auth/
+
+all_keycloak_realm_infrastructure: infrastructure
+all_keycloak_client_id: grafana
+all_keycloak_client_secret: mysecret
+all_keycloak_client_url: g.tanerinfo.eu
+
+kubeadm_init_master: "k8sm1"
+kubeadm_master_group_name: "meta-app_k8sm"
+kubeadm_worker_group_name: "meta-app_k8sw"
+
+vault_influxdb_admin_user: "admin"
+vault_influxdb_admin_password: !vault |
+      $ANSIBLE_VAULT;1.1;AES256
+      30306537386338643066336234666632623639313537643730393132613738306132383238646637
+      6436326262326338656163656236633638303061643861630a346239376335656133613265383731
+      62336132323761656365353738353464343064643631636265313434313961343164343736353266
+      6338343637643862610a656461643933653032333034656632623437373531623232636633336234
+      3436
+
+# === NOUVELLES VARIABLES IoT/InfluxDB ===
+
+# Configuration InfluxDB
+influxdb_data_dir: "/data"
+influxdb_admin_user: "admin"
+influxdb_admin_password: "{{ vault_influxdb_admin_password }}"
+influxdb_org: "iot"
+influxdb_bucket: "sensors"
+influxdb_retention: "30d"
+influxdb_retention_seconds: 2592000  # 30 days
+influxdb_token_path: "/etc/influxdb2/admin-token"
+
+# Configuration MQTT
+mqtt_broker_host: "{{ hostvars[groups['meta-app_mqtt'][0]]['ansible_default_ipv4']['address'] }}"
+mqtt_data_dir: "/data"
+mqtt_port: 1883
+mqtt_websocket_port: 9001
+
+# Configuration Telegraf
+telegraf_mqtt_broker: "{{ mqtt_broker_host }}"
+telegraf_influxdb_host: "{{ hostvars[groups['meta-app_influxdb'][0]]['ansible_default_ipv4']['address'] }}"
+
+# Variables IoT Simulator
+iot_simulator_freertos_devices: 10
+iot_simulator_datacenter_enabled: true
+iot_simulator_energy_enabled: true
+
+# Configuration Kubernetes pour InfluxDB
+kubernetes_influxdb_enabled: true
+kubernetes_influxdb_host: "{{ hostvars[groups['meta-app_influxdb'][0]]['ansible_default_ipv4']['address'] }}"
+kubernetes_influxdb_port: 8086
+kubernetes_influxdb_org: "{{ influxdb_org }}"
+kubernetes_influxdb_bucket: "{{ influxdb_bucket }}"
+kubernetes_influxdb_admin_user: "{{ influxdb_admin_user }}"
+# Le token sera récupéré dynamiquement depuis le serveur InfluxDB
+
+# Dashboards IoT à déployer
+kubernetes_iot_dashboards:
+  - name: "iot-sensors"
+    file: "dashboard_iot_sensors.yml"
+    description: "FreeRTOS IoT Sensors Dashboard"
+  - name: "datacenter-energy"
+    file: "dashboard_datacenter_energy.yml"
+    description: "Datacenter Energy Management"
+  - name: "genesis-iot"
+    file: "dashboard_genesis_iot.yml"
+    description: "Genesis IoT Systems"
+
+# Configuration buckets InfluxDB
+influxdb_buckets:
+  - name: "sensors"
+    retention: "30d"
+    description: "IoT sensor data"
+  - name: "telegraf"
+    retention: "7d"
+    description: "System metrics"
+  - name: "solar_panels"
+    retention: "30d"
+    description: "Solar panel production data"
+  - name: "batteries"
+    retention: "30d"
+    description: "Battery status and performance"
+  - name: "energy_consumption"
+    retention: "30d"
+    description: "Energy consumption data"
+  - name: "grid_data"
+    retention: "30d"
+    description: "Electrical grid data"
+  - name: "weather_data"
+    retention: "14d"
+    description: "Weather station data"
+  - name: "energy_analytics"
+    retention: "90d"
+    description: "Energy analytics and alerts"
+
+
+# Ajouter cette section à la fin de votre all.yml existant
+# Après les variables IoT existantes
+
+# === INTELLIGENCE ÉNERGÉTIQUE (NOUVEAU) ===
+
+# Activation Energy AI
+enable_energy_ai: true
+enable_energy_ai_topics: true
+
+# Configuration Energy AI (intégrée avec votre stack)
+energy_ai:
+  version: "1.0.0"
+  environment: "dev"  # Cohérent avec vos metadatas Terraform
+  debug_mode: false
+
+# Intégration avec vos services InfluxDB/Grafana existants
+energy_ai_influxdb:
+  # Utilise votre configuration InfluxDB existante
+  host: "{{ hostvars[groups['meta-app_influxdb'][0]]['ansible_default_ipv4']['address'] }}"
+  port: 8086
+  org: "{{ influxdb_org }}"  # Réutilise votre org "iot" existante
+  admin_user: "{{ influxdb_admin_user }}"
+  admin_password: "{{ influxdb_admin_password }}"
+  token_path: "{{ influxdb_token_path }}"
+
+# Configuration MQTT Energy AI (utilise votre broker existant)
+energy_ai_mqtt:
+  broker_host: "{{ mqtt_broker_host }}"  # Utilise votre variable existante
+  port: "{{ mqtt_port }}"
+  websocket_port: "{{ mqtt_websocket_port }}"
+  username: "iot"
+  password: "iot123"
+  topics:
+    predictions: "energy/ai/predictions"
+    scenarios: "energy/scenarios"
+    recommendations: "energy/ai/recommendations"
+    performance: "energy/ai/performance"
+    weather_ml: "energy/weather/ml"
+    cost_optimization: "energy/cost/optimization"
+
+# Buckets Energy AI (en plus de vos buckets existants)
+influxdb_energy_ai_buckets:
+  - name: "energy_ai"
+    retention: "90d"
+    description: "Energy AI predictions and optimization results"
+  - name: "energy_scenarios"
+    retention: "30d"
+    description: "Dynamic energy scenarios execution logs"
+  - name: "ai_predictions"
+    retention: "7d"
+    description: "Real-time AI predictions cache"
+  - name: "model_performance"
+    retention: "365d"
+    description: "ML model performance metrics and accuracy"
+  - name: "carbon_metrics"
+    retention: "365d"
+    description: "Carbon footprint and sustainability metrics"
+  - name: "weather_ml"
+    retention: "14d"
+    description: "Weather ML model data and forecasts"
+  - name: "cost_optimization"
+    retention: "90d"
+    description: "Energy cost optimization and arbitrage"
+
+# Chemins Energy AI
+energy_ai_paths:
+  base: "/opt/energy-ai"
+  models: "/data/energy-ai/models"  # Utilise /data comme vos autres services
+  data: "/data/energy-ai/data"
+  logs: "/data/energy-ai/logs"
+  configs: "/opt/energy-ai/configs"
+  scenarios: "/opt/energy-ai/scenarios"
+
+# Services Energy AI
+energy_ai_services:
+  - name: "energy-ai-predictor"
+    description: "Energy AI Prediction Engine"
+    script: "energy_predictor.py"
+    restart_policy: "always"
+    port: 8080
+  - name: "energy-scenarios"
+    description: "Dynamic Energy Scenarios Engine"
+    script: "scenario_engine.py"
+    restart_policy: "always"
+    port: 8081
+  - name: "weather-ml"
+    description: "Weather ML Integration"
+    script: "weather_ml_model.py"
+    restart_policy: "always"
+    port: 8082
+  - name: "cost-optimizer"
+    description: "Energy Cost Optimizer"
+    script: "cost_optimizer.py"
+    restart_policy: "always"
+    port: 8083
+
+# Dashboards Grafana Energy AI (en plus de vos dashboards IoT existants)
+kubernetes_energy_ai_dashboards:
+  - name: "energy-ai-intelligence"
+    file: "dashboard_energy_ai.yml"
+    description: "Energy AI Intelligence Dashboard"
+    uid: "energy-ai-intelligence"
+  - name: "ai-predictions"
+    file: "dashboard_ai_predictions.yml"
+    description: "AI Predictions and Forecasting"
+    uid: "ai-predictions"
+  - name: "energy-scenarios"
+    file: "dashboard_energy_scenarios.yml"
+    description: "Dynamic Energy Scenarios"
+    uid: "energy-scenarios"
+  - name: "carbon-footprint"
+    file: "dashboard_carbon_footprint.yml"
+    description: "Carbon Footprint and Sustainability"
+    uid: "carbon-footprint"
+
+# Configuration scénarios énergétiques
+energy_scenarios:
+  enabled_scenarios:
+    - "morning_optimization"
+    - "solar_maximization"
+    - "night_economic_mode"
+    - "extreme_weather_management"
+    - "energy_arbitrage"
+    - "thermal_optimization"
+  thresholds:
+    battery_critical: 20  # %
+    battery_low: 35       # %
+    battery_good: 70      # %
+    high_solar: 5000      # W
+    expensive_electricity: 0.25  # €/kWh
+    cheap_electricity: 0.10      # €/kWh
+    high_temperature: 30         # °C
+
+# APIs externes (optionnel)
+external_apis:
+  weather:
+    provider: "OpenWeatherMap"
+    api_key: "{{ vault_weather_api_key | default('demo_key') }}"
+    location: "Lyon,FR"
+    update_frequency: "15min"
+  electricity:
+    provider: "RTE"
+    api_key: "{{ vault_electricity_api_key | default('demo_key') }}"
+    update_frequency: "hourly"
+
+# Configuration Python/ML
+python_ai:
+  version: "3.11"
+  venv_path: "/opt/energy-ai/venv"
+  requirements_file: "requirements_ai.txt"
+
+# Intégration Kubernetes (utilise votre config existante)
+kubernetes_energy_ai_enabled: true
+kubernetes_energy_ai_influxdb_host: "{{ kubernetes_influxdb_host }}"
+kubernetes_energy_ai_influxdb_port: "{{ kubernetes_influxdb_port }}"
+kubernetes_energy_ai_influxdb_org: "{{ kubernetes_influxdb_org }}"
+
+# Monitoring et sécurité
+energy_ai_monitoring:
+  health_check_interval: "5min"
+  performance_metrics_interval: "1min"
+  model_retraining_threshold: 0.80
+  log_retention_days: 30
+
+energy_ai_security:
+  api_rate_limiting: true
+  data_encryption: true
+  model_versioning: true
+  audit_logging: true

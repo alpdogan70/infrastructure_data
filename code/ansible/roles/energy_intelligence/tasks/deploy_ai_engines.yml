@@ -1,0 +1,140 @@
+---
+# Déploiement des moteurs IA énergétique
+# File: ansible/roles/energy_intelligence/tasks/deploy_ai_engines.yml
+
+- name: "🧠 Déploiement moteur de prédiction IA"
+  template:
+    src: energy_predictor.py.j2
+    dest: "{{ energy_ai_paths.base }}/energy_predictor.py"
+    owner: root
+    group: root
+    mode: '0755'
+    backup: yes
+  notify: restart energy-ai-predictor
+  tags: ['predictor']
+
+- name: "🎯 Déploiement moteur de scénarios dynamiques"
+  template:
+    src: scenario_engine.py.j2
+    dest: "{{ energy_ai_paths.base }}/scenario_engine.py"
+    owner: root
+    group: root
+    mode: '0755'
+    backup: yes
+  notify: restart energy-scenarios
+  tags: ['scenarios']
+
+- name: "🌤️ Déploiement intégration météo ML"
+  template:
+    src: weather_ml_model.py.j2
+    dest: "{{ energy_ai_paths.base }}/weather_ml_model.py"
+    owner: root
+    group: root
+    mode: '0755'
+    backup: yes
+  notify: restart weather-ml
+  tags: ['weather']
+
+- name: "💰 Déploiement optimiseur de coûts"
+  template:
+    src: cost_optimizer.py.j2
+    dest: "{{ energy_ai_paths.base }}/cost_optimizer.py"
+    owner: root
+    group: root
+    mode: '0755'
+    backup: yes
+  notify: restart cost-optimizer
+  tags: ['cost_optimizer']
+
+- name: "🌱 Déploiement calculateur empreinte carbone"
+  template:
+    src: carbon_footprint.py.j2
+    dest: "{{ energy_ai_paths.base }}/carbon_footprint.py"
+    owner: root
+    group: root
+    mode: '0755'
+    backup: yes
+  tags: ['carbon']
+
+- name: "⚙️ Déploiement script d'initialisation IA"
+  template:
+    src: init_ai_system.py.j2
+    dest: "{{ energy_ai_paths.base }}/init_ai_system.py"
+    owner: root
+    group: root
+    mode: '0755'
+  tags: ['init']
+
+- name: "📊 Déploiement utilitaires IA"
+  template:
+    src: "{{ item }}.j2"
+    dest: "{{ energy_ai_paths.base }}/{{ item }}"
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - ai_diagnostics.py
+    - model_trainer.py
+    - data_collector.py
+    - performance_monitor.py
+  tags: ['utilities']
+
+- name: "🔧 Configuration API keys et credentials"
+  template:
+    src: configs/{{ item }}.j2
+    dest: "{{ energy_ai_paths.configs }}/{{ item }}"
+    owner: root
+    group: root
+    mode: '0600'  # Permissions restrictives pour sécurité
+  loop:
+    - weather_config.json
+    - electricity_config.json
+    - carbon_config.json
+    - ai_credentials.json
+  tags: ['config']
+
+- name: "📋 Création fichier configuration principale IA"
+  template:
+    src: configs/energy_ai_config.yaml.j2
+    dest: "{{ energy_ai_paths.configs }}/energy_ai_config.yaml"
+    owner: root
+    group: root
+    mode: '0644'
+  tags: ['config']
+
+- name: "🎯 Test syntaxe scripts Python IA"
+  command: "{{ python_ai.venv_path }}/bin/python -m py_compile {{ energy_ai_paths.base }}/{{ item }}"
+  loop:
+    - energy_predictor.py
+    - scenario_engine.py
+    - weather_ml_model.py
+    - cost_optimizer.py
+    - carbon_footprint.py
+  register: python_syntax_check
+  failed_when: python_syntax_check.rc != 0
+  changed_when: false
+  tags: ['test']
+
+- name: "📊 Test imports dépendances ML"
+  command: |
+    {{ python_ai.venv_path }}/bin/python -c "
+    import numpy, pandas, sklearn
+    print('✅ Imports ML réussis')
+    "
+  register: ml_imports_test
+  changed_when: false
+  tags: ['test']
+
+- name: "📋 Résumé déploiement moteurs IA"
+  debug:
+    msg: |
+      ✅ Moteurs IA déployés avec succès:
+      🧠 Energy Predictor - {{ energy_ai_paths.base }}/energy_predictor.py
+      🎯 Scenario Engine - {{ energy_ai_paths.base }}/scenario_engine.py  
+      🌤️ Weather ML - {{ energy_ai_paths.base }}/weather_ml_model.py
+      💰 Cost Optimizer - {{ energy_ai_paths.base }}/cost_optimizer.py
+      🌱 Carbon Calculator - {{ energy_ai_paths.base }}/carbon_footprint.py
+      
+      🔧 Configuration: {{ energy_ai_paths.configs }}/
+      📊 Tests syntaxe: {{ 'RÉUSSIS' if python_syntax_check.results | selectattr('rc', 'equalto', 0) | list | length == 5 else 'ÉCHOUÉS' }}
+      📚 Imports ML: {{ 'RÉUSSIS' if ml_imports_test.rc == 0 else 'ÉCHOUÉS' }}

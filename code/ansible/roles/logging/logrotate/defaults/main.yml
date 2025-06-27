@@ -1,0 +1,6 @@
+---
+# defaults file for roles/logrotate
+logrotate_user: root
+logrotate_group: adm
+logrotate_number: 15
+logrotate_frequency: daily

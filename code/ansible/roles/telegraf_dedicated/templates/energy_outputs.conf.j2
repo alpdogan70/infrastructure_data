@@ -1,0 +1,53 @@
+# Solar panels data output
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "solar_panels"
+  timeout = "5s"
+  namepass = ["solar_*"]
+
+# Battery data output
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "batteries"
+  timeout = "5s"
+  namepass = ["battery_*"]
+
+# Energy consumption output
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "energy_consumption"
+  timeout = "5s"
+  namepass = ["energy_consumption"]
+
+# Grid data output
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "grid_data"
+  timeout = "5s"
+  namepass = ["grid_*"]
+
+# Weather data output
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "weather_data"
+  timeout = "5s"
+  namepass = ["weather_*"]
+
+# Analytics and aggregated data
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:8086"]
+  token = "{{ influxdb_token.content | b64decode | trim }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "energy_analytics"
+  timeout = "5s"
+  namepass = ["analytics_*", "alert_*", "efficiency_*"]

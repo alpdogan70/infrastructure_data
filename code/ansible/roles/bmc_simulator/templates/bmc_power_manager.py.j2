@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""
+BMC Power Manager
+Manages power states and coordinates with energy system
+File: /ansible/roles/bmc_simulator/templates/bmc_power_manager.py.j2
+"""
+
+import json
+import time
+import paho.mqtt.client as mqtt
+from datetime import datetime
+
+# Configuration
+MQTT_BROKER = "{{ mqtt_broker_host }}"
+MQTT_PORT = 1883
+MQTT_USERNAME = "iot"
+MQTT_PASSWORD = "iot123"
+
+class BMCPowerManager:
+    def __init__(self):
+        self.client = mqtt.Client(client_id="bmc_power_manager")
+        self.client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+        self.client.on_connect = self.on_connect
+        self.client.on_message = self.on_message
+        self.running = True
+        
+        # Power management state
+        self.servers = {}
+        self.energy_data = {}
+        
+    def on_connect(self, client, userdata, flags, rc):
+        if rc == 0:
+            print("🔌 BMC Power Manager connected to MQTT")
+            client.subscribe("bmc/server/+/power")
+            client.subscribe("energy/battery/datacenter/status")
+        else:
+            print(f"❌ Power Manager failed to connect: {rc}")
+    
+    def on_message(self, client, userdata, msg):
+        try:
+            topic = msg.topic
+            payload = json.loads(msg.payload.decode())
+            
+            if topic.startswith("bmc/server/") and topic.endswith("/power"):
+                server_id = topic.split("/")[2]
+                self.servers[server_id] = payload
+            elif topic == "energy/battery/datacenter/status":
+                self.energy_data = payload
+                self._check_power_management()
+                
+        except Exception as e:
+            print(f"❌ Error processing power message: {e}")
+    
+    def _check_power_management(self):
+        """Check if power management actions needed"""
+        battery_soc = self.energy_data.get('charge_level', 100)
+        
+        if battery_soc < 20:
+            print(f"⚠️ Critical battery: {battery_soc}% - Emergency power management")
+        elif battery_soc < 35:
+            print(f"⚠️ Low battery: {battery_soc}% - Power saving mode")
+        else:
+            print(f"✅ Battery OK: {battery_soc}%")
+    
+    def run(self):
+        """Main power manager loop"""
+        print("🔌 Starting BMC Power Manager...")
+        
+        try:
+            self.client.connect(MQTT_BROKER, MQTT_PORT, 60)
+            self.client.loop_start()
+        except Exception as e:
+            print(f"❌ Failed to connect to MQTT: {e}")
+            return
+        
+        try:
+            while self.running:
+                time.sleep(30)
+        except KeyboardInterrupt:
+            print("\n🛑 Shutting down Power Manager...")
+            self.running = False
+        
+        self.client.loop_stop()
+        self.client.disconnect()
+
+if __name__ == "__main__":
+    manager = BMCPowerManager()
+    manager.run()

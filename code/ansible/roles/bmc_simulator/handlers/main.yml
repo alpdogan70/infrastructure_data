@@ -1,0 +1,49 @@
+---
+# BMC Simulator Handlers
+# File: /ansible/roles/bmc_simulator/handlers/main.yml
+
+- name: restart bmc-core-simulator
+  systemd:
+    name: bmc-core-simulator
+    state: restarted
+    daemon_reload: yes
+    
+- name: restart bmc-web-simulator
+  systemd:
+    name: bmc-web-simulator
+    state: restarted
+    daemon_reload: yes
+    
+- name: restart bmc-power-manager
+  systemd:
+    name: bmc-power-manager
+    state: restarted
+    daemon_reload: yes
+    
+- name: restart bmc-sol-simulator
+  systemd:
+    name: bmc-sol-simulator
+    state: restarted
+    daemon_reload: yes
+    
+- name: restart bmc-energy-integration
+  systemd:
+    name: bmc-energy-integration
+    state: restarted
+    daemon_reload: yes
+    
+- name: restart bmc-ipmi-simulator
+  systemd:
+    name: bmc-ipmi-simulator
+    state: restarted
+    daemon_reload: yes
+    
+- name: restart nginx
+  systemd:
+    name: nginx
+    state: restarted
+    
+- name: reload consul
+  systemd:
+    name: consul
+    state: reloaded

@@ -1,0 +1,9 @@
+---
+# defaults file for roles/vmetrics
+
+vmetrics_dir_disk_data: ""
+vmetrics_version: 1.91.3
+vmetrics_dir_data: "{{ vmetrics_dir_disk_data }}/var/lib/vmetrics"
+vmetrics_listen: "0.0.0.0:8428"
+vmetrics_month_retention: 12
+vmetrics_user: vmetrics

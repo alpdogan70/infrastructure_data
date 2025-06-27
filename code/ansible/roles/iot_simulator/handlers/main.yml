@@ -1,0 +1,34 @@
+---
+# Handlers for IoT Simulator services
+# File: /ansible/roles/iot_simulator/handlers/main.yml
+
+- name: restart freertos-simulator
+  systemd:
+    name: freertos-simulator
+    state: restarted
+    daemon_reload: yes
+
+- name: restart datacenter-energy-simulator
+  systemd:
+    name: datacenter-energy-simulator
+    state: restarted
+    daemon_reload: yes
+
+- name: restart grid-optimization-simulator
+  systemd:
+    name: grid-optimization-simulator
+    state: restarted
+    daemon_reload: yes
+# ---
+# - name: restart freertos-simulator
+#   systemd:
+#     name: freertos-simulator
+#     state: restarted
+#     daemon_reload: yes
+
+# - name: restart energy-simulator
+#   systemd:
+#     name: energy-simulator
+#     state: restarted
+#     daemon_reload: yes
+

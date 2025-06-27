@@ -1,0 +1,7 @@
+---
+# defaults file for roles/karma
+
+karma_version: 0.116
+karma_dir_config: /etc/karma
+karma_user: karma
+karma_alertmanager_uri: ""

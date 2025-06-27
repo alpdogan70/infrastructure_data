@@ -1,0 +1,112 @@
+---
+# Variables par défaut pour le rôle energy_intelligence
+# File: ansible/roles/energy_intelligence/defaults/main.yml
+
+# Configuration générale
+energy_ai:
+  version: "1.0.0"
+  environment: "production"
+
+# Chemins de l'application
+energy_ai_paths:
+  base: "/opt/energy-ai"
+  models: "/opt/energy-ai/models"
+  data: "/opt/energy-ai/data"
+  logs: "/opt/energy-ai/logs"
+  configs: "/opt/energy-ai/configs"
+  scenarios: "/opt/energy-ai/scenarios"
+
+# Configuration Python
+python_ai:
+  version: "3"
+  venv_path: "/opt/energy-ai/venv"
+  requirements_file: "requirements_ai.txt"
+
+# Services systemd
+energy_ai_services:
+  - name: "energy-ai-predictor"
+    description: "Intelligence Énergétique - Prédicteur IA"
+    restart_policy: "always"
+  - name: "energy-scenarios"
+    description: "Intelligence Énergétique - Moteur de Scénarios"
+    restart_policy: "always"
+  - name: "weather-ml"
+    description: "Intelligence Énergétique - ML Météo"
+    restart_policy: "always"
+  - name: "cost-optimizer"
+    description: "Intelligence Énergétique - Optimiseur de Coûts"
+    restart_policy: "always"
+
+# Configuration InfluxDB
+influxdb_org: "iot"
+influxdb_ai_buckets:
+  - name: "energy_ai"
+    description: "Données principales IA énergétique"
+    retention_days: 90
+  - name: "ai_predictions"
+    description: "Prédictions IA (court terme)"
+    retention_days: 30
+  - name: "energy_scenarios"
+    description: "Scénarios énergétiques exécutés"
+    retention_days: 60
+  - name: "model_performance"
+    description: "Performance des modèles IA"
+    retention_days: 365
+  - name: "carbon_metrics"
+    description: "Métriques empreinte carbone"
+    retention_days: 365
+
+# Topics MQTT pour IA
+mqtt_ai:
+  topics:
+    predictions: "energy/ai/predictions"
+    scenarios: "energy/ai/scenarios"
+    recommendations: "energy/ai/recommendations"
+    performance: "energy/ai/performance"
+    weather_ml: "energy/ai/weather"
+    cost_optimization: "energy/ai/costs"
+
+# Configuration Telegraf
+telegraf_mqtt_broker: "{{ mqtt_broker_host | default('localhost') }}"
+
+# Configuration MQTT pour Energy AI
+energy_ai_mqtt:
+  username: "iot"
+  password: "iot123"
+  topics:
+    predictions: "energy/ai/predictions"
+    scenarios: "energy/ai/scenarios"
+    recommendations: "energy/ai/recommendations"
+    performance: "energy/ai/performance"
+    weather_ml: "energy/ai/weather"
+    cost_optimization: "energy/ai/costs"
+
+# Configuration InfluxDB pour Energy AI
+energy_ai_influxdb:
+  org: "{{ influxdb_org }}"
+
+# APIs externes
+external_apis:
+  weather:
+    api_key: "demo_key"
+
+# Dashboards Grafana
+grafana_ai_dashboards:
+  - title: "Energy AI Intelligence"
+    uid: "energy-ai-intelligence"
+  - title: "AI Predictions"
+    uid: "ai-predictions"
+  - title: "Energy Scenarios"
+    uid: "energy-scenarios"
+  - title: "AI Performance"
+    uid: "ai-performance"
+  - title: "Carbon Footprint"
+    uid: "carbon-footprint"
+
+# Configuration par défaut des hôtes (fallback)
+mqtt_broker_host: "localhost"
+influxdb_host: "localhost"
+influxdb_url: "http://{{ influxdb_host }}:8086"
+
+# Configuration activation optionnelle
+enable_energy_ai_topics: true

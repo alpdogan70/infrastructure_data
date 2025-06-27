@@ -1,0 +1,68 @@
+# System monitoring for Telegraf itself
+[[inputs.cpu]]
+  percpu = true
+  totalcpu = true
+  collect_cpu_time = false
+  report_active = false
+  [inputs.cpu.tags]
+    source = "telegraf"
+
+[[inputs.disk]]
+  ignore_fs = ["tmpfs", "devtmpfs", "devfs", "iso9660", "overlay", "aufs", "squashfs"]
+  [inputs.disk.tags]
+    source = "telegraf"
+
+[[inputs.diskio]]
+  [inputs.diskio.tags]
+    source = "telegraf"
+
+[[inputs.kernel]]
+  [inputs.kernel.tags]
+    source = "telegraf"
+
+[[inputs.mem]]
+  [inputs.mem.tags]
+    source = "telegraf"
+
+[[inputs.net]]
+  interfaces = ["eth*"]
+  [inputs.net.tags]
+    source = "telegraf"
+
+[[inputs.processes]]
+  [inputs.processes.tags]
+    source = "telegraf"
+
+[[inputs.swap]]
+  [inputs.swap.tags]
+    source = "telegraf"
+
+[[inputs.system]]
+  [inputs.system.tags]
+    source = "telegraf"
+
+# Monitor MQTT broker
+[[inputs.ping]]
+  urls = ["{{ telegraf_mqtt_broker }}"]
+  count = 1
+  ping_interval = 10.0
+  timeout = 5.0
+  [inputs.ping.tags]
+    target = "mqtt"
+    source = "telegraf"
+
+# Monitor InfluxDB
+[[inputs.ping]]
+  urls = ["{{ influxdb_host }}"]
+  count = 1
+  ping_interval = 10.0
+  timeout = 5.0
+  [inputs.ping.tags]
+    target = "influxdb"
+    source = "telegraf"
+
+# Monitor Telegraf's own metrics
+[[inputs.internal]]
+  collect_memstats = true
+  [inputs.internal.tags]
+    source = "telegraf"

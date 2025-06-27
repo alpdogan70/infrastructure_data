@@ -1,0 +1,172 @@
+---
+# Enhanced IoT Simulator role - corrected version
+# File: /ansible/roles/iot_simulator/tasks/main.yml
+
+- name: Install Python dependencies
+  apt:
+    name:
+      - python3
+      - python3-pip
+      - python3-venv
+      - python3-dev
+    state: present
+    update_cache: yes
+
+- name: Create IoT simulator directory
+  file:
+    path: /opt/iot-simulator
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create Python virtual environment
+  command: python3 -m venv /opt/iot-simulator/venv
+  args:
+    creates: /opt/iot-simulator/venv
+
+- name: Upgrade pip in virtual environment
+  pip:
+    name: pip
+    state: latest
+    virtualenv: /opt/iot-simulator/venv
+
+- name: Install Python packages
+  pip:
+    name:
+      - paho-mqtt==1.6.1
+      - faker==18.13.0
+    virtualenv: /opt/iot-simulator/venv
+
+# Simulateur FreeRTOS original (capteurs IoT)
+- name: Copy FreeRTOS IoT simulator script
+  template:
+    src: freertos_simulator.py.j2
+    dest: /opt/iot-simulator/freertos_simulator.py
+    owner: root
+    group: root
+    mode: '0755'
+
+# Simulateur datacenter énergétique principal
+- name: Copy Datacenter Energy simulator script
+  template:
+    src: datacenter_energy_simulator.py.j2
+    dest: /opt/iot-simulator/datacenter_energy_simulator.py
+    owner: root
+    group: root
+    mode: '0755'
+
+# NOUVEAU: Simulateur Grid & Optimization complémentaire
+- name: Copy Grid & Optimization simulator script
+  template:
+    src: grid_optimization_simulator.py.j2
+    dest: /opt/iot-simulator/grid_optimization_simulator.py
+    owner: root
+    group: root
+    mode: '0755'
+
+# Services systemd
+- name: Create FreeRTOS systemd service
+  template:
+    src: freertos-simulator.service.j2
+    dest: /etc/systemd/system/freertos-simulator.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart freertos-simulator
+
+- name: Create Datacenter Energy systemd service
+  template:
+    src: datacenter-energy-simulator.service.j2
+    dest: /etc/systemd/system/datacenter-energy-simulator.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart datacenter-energy-simulator
+
+# NOUVEAU: Service Grid & Optimization
+- name: Create Grid & Optimization systemd service
+  template:
+    src: grid-optimization-simulator.service.j2
+    dest: /etc/systemd/system/grid-optimization-simulator.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart grid-optimization-simulator
+
+# Démarrage des services
+- name: Enable and start FreeRTOS simulator
+  systemd:
+    name: freertos-simulator
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Enable and start Datacenter Energy simulator
+  systemd:
+    name: datacenter-energy-simulator
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+# NOUVEAU: Démarrage Grid & Optimization
+- name: Enable and start Grid & Optimization simulator
+  systemd:
+    name: grid-optimization-simulator
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Wait for all simulators to be ready
+  pause:
+    seconds: 15
+    prompt: "Waiting for simulators to start..."
+
+- name: Verify all simulators are running
+  systemd:
+    name: "{{ item }}"
+    state: started
+  register: simulator_status
+  loop:
+    - freertos-simulator
+    - datacenter-energy-simulator
+    - grid-optimization-simulator
+  failed_when: false
+
+- name: Display enhanced simulator status
+  debug:
+    msg: |
+      ✅ Simulateurs IoT Enhanced déployés avec succès:
+      
+      🔬 FreeRTOS IoT Simulator:
+        • Capteurs génériques (température, humidité, pression)
+        • 10 devices simulés
+        • Topics: sensors/+/+, devices/+/status
+        • Status: {{ 'Running' if simulator_status.results[0].status.ActiveState == 'active' else 'Check logs' }}
+      
+      🏢 Datacenter Energy Simulator:
+        • 20 panneaux solaires (8kW total)
+        • Système de batteries 25kWh
+        • 12 serveurs avec charge variable
+        • Optimisation énergétique de base
+        • Topics: energy/datacenter/dashboard, energy/solar/*, energy/battery/*, etc.
+        • Status: {{ 'Running' if simulator_status.results[1].status.ActiveState == 'active' else 'Check logs' }}
+      
+      🔌 Grid & Optimization Simulator (NOUVEAU):
+        • Connexion réseau électrique intelligente
+        • Tarification dynamique temps réel
+        • Optimisation avancée multi-critères
+        • Gestion carbone et indépendance énergétique
+        • Topics: energy/grid/datacenter/status, energy/optimization/datacenter/decision
+        • Status: {{ 'Running' if simulator_status.results[2].status.ActiveState == 'active' else 'Check logs' }}
+      
+      📊 Couverture complète pour dashboard:
+        • Tous les buckets InfluxDB alimentés
+        • Métriques temps réel et historiques
+        • Optimisation énergétique intelligente
+        • Prêt pour visualisation Grafana
+        
+      🔧 Pour vérifier les logs:
+        sudo journalctl -u freertos-simulator -f
+        sudo journalctl -u datacenter-energy-simulator -f  
+        sudo journalctl -u grid-optimization-simulator -f

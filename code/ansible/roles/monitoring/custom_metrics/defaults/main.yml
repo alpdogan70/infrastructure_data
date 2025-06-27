@@ -1,0 +1,3 @@
+---
+# defaults file for roles/monitoring/check_backups
+custom_metrics_scheduling: "*/10 * * * *"

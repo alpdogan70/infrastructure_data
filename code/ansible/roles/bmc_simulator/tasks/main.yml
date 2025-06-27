@@ -1,0 +1,356 @@
+---
+# BMC Aspeed AST2600 Simulator role - Version complète avec handlers
+# File: /ansible/roles/bmc_simulator/tasks/main.yml
+
+- name: Install BMC simulator dependencies
+  apt:
+    name:
+      - python3
+      - python3-pip
+      - python3-venv
+      - python3-dev
+      - nginx
+      - socat
+      - ipmitool
+      - freeipmi-tools
+    state: present
+    update_cache: yes
+
+- name: Create BMC simulator directory
+  file:
+    path: /opt/bmc-simulator
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create Python virtual environment
+  command: python3 -m venv /opt/bmc-simulator/venv
+  args:
+    creates: /opt/bmc-simulator/venv
+
+- name: Upgrade pip in virtual environment
+  pip:
+    name: pip
+    state: latest
+    virtualenv: /opt/bmc-simulator/venv
+
+- name: Install Python packages
+  pip:
+    name:
+      - paho-mqtt==1.6.1
+      - flask==2.3.3
+      - flask-socketio==5.3.6
+      - pyserial==3.5
+      - psutil==5.9.6
+      - requests==2.31.0
+    virtualenv: /opt/bmc-simulator/venv
+
+- name: Create BMC web interface directory
+  file:
+    path: /opt/bmc-simulator/web
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create BMC logs directory
+  file:
+    path: /opt/bmc-simulator/logs
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+# BMC Core Simulator
+- name: Copy BMC Core simulator script
+  template:
+    src: bmc_core_simulator.py.j2
+    dest: /opt/bmc-simulator/bmc_core_simulator.py
+    owner: root
+    group: root
+    mode: '0755'
+  notify: restart bmc-core-simulator
+
+# BMC Web Interface
+- name: Copy BMC Web interface script
+  template:
+    src: bmc_web_interface.py.j2
+    dest: /opt/bmc-simulator/bmc_web_interface.py
+    owner: root
+    group: root
+    mode: '0755'
+  notify: restart bmc-web-simulator
+
+# BMC Power Management
+- name: Copy BMC Power management script
+  template:
+    src: bmc_power_manager.py.j2
+    dest: /opt/bmc-simulator/bmc_power_manager.py
+    owner: root
+    group: root
+    mode: '0755'
+  notify: restart bmc-power-manager
+
+# BMC Serial Over LAN (SOL) Simulator
+- name: Copy BMC SOL simulator script
+  template:
+    src: bmc_sol_simulator.py.j2
+    dest: /opt/bmc-simulator/bmc_sol_simulator.py
+    owner: root
+    group: root
+    mode: '0755'
+  notify: restart bmc-sol-simulator
+
+# BMC Energy Integration
+- name: Copy BMC energy integration script
+  template:
+    src: bmc_energy_integration.py.j2
+    dest: /opt/bmc-simulator/bmc_energy_integration.py
+    owner: root
+    group: root
+    mode: '0755'
+  notify: restart bmc-energy-integration
+
+# BMC IPMI Simulator
+- name: Copy BMC IPMI simulator script
+  template:
+    src: bmc_ipmi_simulator.py.j2
+    dest: /opt/bmc-simulator/bmc_ipmi_simulator.py
+    owner: root
+    group: root
+    mode: '0755'
+  notify: restart bmc-ipmi-simulator
+
+# System services
+- name: Create BMC Core systemd service
+  template:
+    src: bmc-core-simulator.service.j2
+    dest: /etc/systemd/system/bmc-core-simulator.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart bmc-core-simulator
+
+- name: Create BMC Web systemd service
+  template:
+    src: bmc-web-simulator.service.j2
+    dest: /etc/systemd/system/bmc-web-simulator.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart bmc-web-simulator
+
+- name: Create BMC Power Manager systemd service
+  template:
+    src: bmc-power-manager.service.j2
+    dest: /etc/systemd/system/bmc-power-manager.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart bmc-power-manager
+
+- name: Create BMC SOL systemd service
+  template:
+    src: bmc-sol-simulator.service.j2
+    dest: /etc/systemd/system/bmc-sol-simulator.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart bmc-sol-simulator
+
+- name: Create BMC Energy Integration systemd service
+  template:
+    src: bmc-energy-integration.service.j2
+    dest: /etc/systemd/system/bmc-energy-integration.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart bmc-energy-integration
+
+- name: Create BMC IPMI systemd service
+  template:
+    src: bmc-ipmi-simulator.service.j2
+    dest: /etc/systemd/system/bmc-ipmi-simulator.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart bmc-ipmi-simulator
+
+# Nginx configuration
+- name: Configure Nginx for BMC web interface
+  template:
+    src: bmc-nginx.conf.j2
+    dest: /etc/nginx/sites-available/bmc-simulator
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart nginx
+
+- name: Enable BMC Nginx site
+  file:
+    src: /etc/nginx/sites-available/bmc-simulator
+    dest: /etc/nginx/sites-enabled/bmc-simulator
+    state: link
+  notify: restart nginx
+
+- name: Remove default Nginx site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: restart nginx
+
+# Consul service registration
+- name: Register BMC Web Interface service in Consul
+  copy:
+    dest: /etc/consul.d/bmc-web.service.json
+    owner: consul
+    group: consul
+    mode: '0644'
+    content: |
+      {
+        "service": {
+          "name": "bmc-web",
+          "tags": ["bmc", "web-interface", "ipmi", "datacenter"],
+          "address": "{{ ansible_default_ipv4.address }}",
+          "port": 80,
+          "meta": {
+            "version": "aspeed-ast2600",
+            "environment": "dev",
+            "managed_servers": "12"
+          },
+          "check": {
+            "http": "http://{{ ansible_default_ipv4.address }}/api/bmc/status",
+            "interval": "30s",
+            "timeout": "10s"
+          }
+        }
+      }
+  notify: reload consul
+
+# Start BMC services
+- name: Enable and start BMC Core simulator
+  systemd:
+    name: bmc-core-simulator
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Enable and start BMC Web interface
+  systemd:
+    name: bmc-web-simulator
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Enable and start BMC Power Manager
+  systemd:
+    name: bmc-power-manager
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Enable and start BMC SOL simulator
+  systemd:
+    name: bmc-sol-simulator
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Enable and start BMC Energy Integration
+  systemd:
+    name: bmc-energy-integration
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Enable and start BMC IPMI simulator
+  systemd:
+    name: bmc-ipmi-simulator
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Enable and start Nginx
+  systemd:
+    name: nginx
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Wait for BMC services to be ready
+  pause:
+    seconds: 20
+    prompt: "Waiting for BMC services to start..."
+
+- name: Verify BMC services are running
+  systemd:
+    name: "{{ item }}"
+    state: started
+  register: service_status
+  loop:
+    - bmc-core-simulator
+    - bmc-web-simulator
+    - bmc-power-manager
+    - bmc-sol-simulator
+    - bmc-energy-integration
+    - bmc-ipmi-simulator
+    - nginx
+  failed_when: false
+
+- name: Display BMC Simulator status
+  debug:
+    msg: |
+      
+      🎉 ===== BMC ASPEED AST2600 SIMULATOR DEPLOYED =====
+      
+      ✅ All BMC services deployed successfully!
+      
+      🌐 Web Interface:
+        • URL: http://{{ ansible_default_ipv4.address }}/
+        • API: http://{{ ansible_default_ipv4.address }}/api/servers
+        • Status: {{ 'Running' if service_status.results[1].state == 'started' else 'Check logs' }}
+      
+      🔧 IPMI Access:
+        • Host: {{ ansible_default_ipv4.address }}
+        • Port: 623 (IPMI over LAN)
+        • Commands: ipmitool -H {{ ansible_default_ipv4.address }} -U admin -P admin chassis status
+        • Status: {{ 'Running' if service_status.results[5].state == 'started' else 'Check logs' }}
+      
+      ⚡ Energy Management:
+        • Auto-shutdown when battery < 20%
+        • Graceful shutdown when battery < 35% 
+        • Auto-start when solar > 3kW + battery > 70%
+        • Status: {{ 'Running' if service_status.results[4].state == 'started' else 'Check logs' }}
+      
+      🖥️ Server Management:
+        • 12 simulated servers (server_01 to server_12)
+        • Power management (on/off/reset)
+        • Sensor monitoring (CPU temp, fans, voltages)
+        • Boot state simulation
+        • Status: {{ 'Running' if service_status.results[0].state == 'started' else 'Check logs' }}
+      
+      📟 Serial Over LAN (SOL):
+        • Console access simulation
+        • Status: {{ 'Running' if service_status.results[3].state == 'started' else 'Check logs' }}
+      
+      🔧 Testing Commands:
+        # Web Interface
+        curl http://{{ ansible_default_ipv4.address }}/api/servers
+        
+        # IPMI Commands
+        ipmitool -H {{ ansible_default_ipv4.address }} -U admin -P admin chassis status
+        ipmitool -H {{ ansible_default_ipv4.address }} -U admin -P admin power on
+        
+        # Check services
+        sudo systemctl status bmc-core-simulator
+        sudo systemctl status bmc-web-simulator
+        sudo systemctl status bmc-energy-integration
+        
+        # View logs
+        sudo journalctl -u bmc-core-simulator -f
+        sudo journalctl -u bmc-web-simulator -f
+      
+      🚀 BMC Simulator ready for datacenter energy management!
+      
+      Next: Access the web interface and test server control

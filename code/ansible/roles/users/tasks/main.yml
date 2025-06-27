@@ -1,0 +1,37 @@
+---
+# tasks file for roles/users
+
+- name: Add admin users
+  include_tasks: adminusers.yml
+  with_fileglob:
+  - "./users/*.yml"
+
+- name: users list
+  set_fact:
+    user_list: [ "{{ users_default_account }}" ]
+
+- name: users list
+  set_fact:
+    user_list:  "{{ [ item | basename | regex_replace('.yml$', '') ] + user_list }}"
+  with_fileglob:
+  - "./users/*.yml"
+
+- name: change allowed users in sshd_config
+  copy:
+    content: "AllowUsers {{ user_list | join(' ') }}"
+    dest: /etc/ssh/sshd_config.d/allowusers.conf
+    owner: root
+    group: root
+    mode: 0640
+    validate: sshd -t -f %s
+  notify: restart_sshd
+  when: ansible_hostname not in users_servers_ssh_disallow
+
+- name: change allowed users in sshd_config
+  file:
+    state: absent
+    path: /etc/ssh/sshd_config.d/allowusers.conf
+  notify: restart_sshd
+  when: ansible_hostname in users_servers_ssh_disallow
+
+- meta: flush_handlers

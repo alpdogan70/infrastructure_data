@@ -1,0 +1,385 @@
+# Enhanced Datacenter Energy Configuration (FIXED FIELDS)
+# File: /ansible/roles/telegraf_dedicated/templates/datacenter_energy.conf.j2
+
+# Main Dashboard Data
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = ["energy/datacenter/dashboard"]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "iot"
+  password = "iot123"
+  client_id = "telegraf-datacenter-dashboard"
+  
+  data_format = "json"
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_dashboard"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "dashboard"
+    system = "energy_management"
+
+# Datacenter Solar Production
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "energy/solar/datacenter/production",
+    "energy/solar/datacenter/summary"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "iot"
+  password = "iot123"
+  client_id = "telegraf-datacenter-solar"
+  
+  data_format = "json"
+  tag_keys = ["weather_condition"]  # Seuls les champs texte sont des tags
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_solar"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "solar"
+
+# Datacenter Battery System
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "energy/battery/datacenter/status",
+    "energy/battery/datacenter/summary"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "iot"
+  password = "iot123"
+  client_id = "telegraf-datacenter-battery"
+  
+  data_format = "json"
+  tag_keys = ["status"]  # Seuls les champs texte sont des tags
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_battery"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "battery"
+
+# Datacenter Power Consumption - FIXED
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "energy/consumption/datacenter/power",
+    "energy/consumption/datacenter/metrics"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "iot"
+  password = "iot123"
+  client_id = "telegraf-datacenter-load"
+  
+  data_format = "json"
+  # FIXED: Ne pas mettre active_servers et pue comme tags
+  # tag_keys = ["active_servers", "pue", "trend"]  # INCORRECT
+  tag_keys = []  # Pas de tags, tous les champs restent comme fields
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_consumption"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "load"
+
+# Grid Connection
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = ["energy/grid/datacenter/status"]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "iot"
+  password = "iot123"
+  client_id = "telegraf-datacenter-grid"
+  
+  data_format = "json"
+  tag_keys = ["tariff_type", "grid_quality"]  # Champs texte comme tags
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_grid"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "grid"
+
+# Energy Optimization Decisions
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = ["energy/optimization/datacenter/decision"]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "iot"
+  password = "iot123"
+  client_id = "telegraf-datacenter-optimizer"
+  
+  data_format = "json"
+  tag_keys = ["mode", "decision", "recommendation"]  # Champs texte comme tags
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_optimization"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "optimizer"
+
+# Weather Data
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "weather/datacenter/current",
+    "environment/weather/datacenter/current"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "iot"
+  password = "iot123"
+  client_id = "telegraf-datacenter-weather"
+  
+  data_format = "json"
+  tag_keys = ["condition"]  # Champs texte comme tags
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_weather"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "weather"
+
+# Enhanced Datacenter Energy Configuration (FIXED FIELDS) + BMC
+# File: /ansible/roles/telegraf_dedicated/templates/datacenter_energy.conf.j2
+# EXISTANT - NE PAS MODIFIER
+# ... (gardez tout le contenu existant tel quel) ...
+
+
+# Configuration Telegraf BMC corrigée pour utiliser le simulateur
+# Remplacer les sections BMC dans datacenter_energy.conf.j2
+
+# ========== BMC ASPEED AST2600 INTEGRATION (CORRIGÉ) ==========
+
+# BMC Server Sensors Data (données réelles du simulateur)
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "bmc/server/+/sensors"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "iot"
+  password = "iot123"
+  client_id = "telegraf-bmc-sensors"
+  
+  data_format = "json"
+  tag_keys = ["server_id", "power_state", "boot_state"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "bmc_servers"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "bmc"
+    component = "sensors"
+    bmc_type = "aspeed_ast2600"
+
+# BMC Server Power Management (données réelles du simulateur)
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "bmc/server/+/power"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "iot"
+  password = "iot123"
+  client_id = "telegraf-bmc-power"
+  
+  data_format = "json"
+  tag_keys = ["server_id", "power_state", "boot_state"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "bmc_power"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "bmc"
+    component = "power_management"
+    bmc_type = "aspeed_ast2600"
+
+# BMC System Status (données réelles du simulateur)
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "bmc/system/status"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "iot"
+  password = "iot123"
+  client_id = "telegraf-bmc-system"
+  
+  data_format = "json"
+  tag_keys = ["bmc_info"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "bmc_api_status"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "bmc"
+    component = "system"
+    bmc_type = "aspeed_ast2600"
+
+# BMC Energy Events (nouvelles données du simulateur)
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = [
+    "bmc/datacenter/energy/events",
+    "bmc/datacenter/energy/status"
+  ]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "iot"
+  password = "iot123"
+  client_id = "telegraf-bmc-energy"
+  
+  data_format = "json"
+  tag_keys = ["event_type", "strategy"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "bmc_energy_management"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "bmc"
+    component = "energy_management"
+    bmc_type = "aspeed_ast2600"
+
+# IPMI Health Check (test de connectivité BMC)
+[[inputs.exec]]
+  commands = [
+    "/bin/bash -c 'if systemctl is-active --quiet bmc-core-simulator; then echo 1; else echo 0; fi'"
+  ]
+  name_override = "bmc_ipmi_health"
+  data_format = "value"
+  data_type = "integer"
+  interval = "120s"
+  timeout = "10s"
+  
+  [inputs.exec.tags]
+    source = "bmc"
+    component = "health_check"
+    test_type = "service_status"
+    bmc_type = "aspeed_ast2600"
+
+# ========== FIN CORRECTION BMC ==========
+
+
+# # ========== NOUVEAU: BMC ASPEED AST2600 INTEGRATION ==========
+
+# # BMC Server Sensors Data
+# [[inputs.mqtt_consumer]]
+#   servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+#   topics = [
+#     "bmc/server/+/sensors",
+#     "bmc/system/status"
+#   ]
+#   topic_tag = "topic"
+#   qos = 1
+#   connection_timeout = "30s"
+#   username = "iot"
+#   password = "iot123"
+#   client_id = "telegraf-bmc-sensors"
+  
+#   data_format = "json"
+#   tag_keys = ["server_id", "power_state", "boot_state"]
+#   json_time_key = "timestamp"
+#   json_time_format = "2006-01-02T15:04:05Z07:00"
+#   name_override = "bmc_servers"
+  
+#   [inputs.mqtt_consumer.tags]
+#     source = "bmc"
+#     component = "sensors"
+
+# # BMC Server Power Management
+# [[inputs.mqtt_consumer]]
+#   servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+#   topics = [
+#     "bmc/server/+/power",
+#     "bmc/datacenter/energy/status",
+#     "bmc/datacenter/energy/events"
+#   ]
+#   topic_tag = "topic"
+#   qos = 1
+#   connection_timeout = "30s"
+#   username = "iot"
+#   password = "iot123"
+#   client_id = "telegraf-bmc-power"
+  
+#   data_format = "json"
+#   tag_keys = ["server_id", "power_state", "boot_state", "event_type", "strategy"]
+#   json_time_key = "timestamp"
+#   json_time_format = "2006-01-02T15:04:05Z07:00"
+#   name_override = "bmc_power"
+  
+#   [inputs.mqtt_consumer.tags]
+#     source = "bmc"
+#     component = "power_management"
+
+# # BMC API Monitoring via HTTP
+# [[inputs.http]]
+#   urls = ["http://10.0.1.46/api/servers"]
+#   name_override = "bmc_api_servers"
+#   data_format = "json"
+#   interval = "30s"
+#   timeout = "10s"
+  
+#   [inputs.http.tags]
+#     source = "bmc"
+#     component = "api"
+#     endpoint = "servers"
+
+# [[inputs.http]]
+#   urls = ["http://10.0.1.46/api/bmc/status"]
+#   name_override = "bmc_api_status"
+#   data_format = "json"
+#   interval = "60s"
+#   timeout = "10s"
+  
+#   [inputs.http.tags]
+#     source = "bmc"
+#     component = "api"
+#     endpoint = "status"
+
+# # BMC IPMI Health Check
+# [[inputs.exec]]
+#   commands = [
+#     "timeout 10 ipmitool -H 10.0.1.46 -U admin -P admin -I lanplus chassis status | grep 'System Power' | awk '{print ($4 == \"on\") ? 1 : 0}'"
+#   ]
+#   name_override = "bmc_ipmi_health"
+#   data_format = "value"
+#   data_type = "integer"
+#   interval = "120s"
+#   timeout = "15s"
+  
+#   [inputs.exec.tags]
+#     source = "bmc"
+#     component = "ipmi"
+#     protocol = "lanplus"
+
+# # ========== FIN AJOUT BMC ==========

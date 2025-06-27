@@ -1,0 +1,68 @@
+---
+- name: Créer l'utilisateur consul s'il n'existe pas
+  user:
+    name: consul
+    shell: /usr/sbin/nologin
+    system: yes
+    create_home: no
+
+- name: Ensure /etc/consul.d exists
+  file:
+    path: /etc/consul.d
+    state: directory
+    owner: consul
+    group: consul
+    mode: '0755'
+
+- name: Register MinIO in Consul
+  copy:
+    content: |
+      {
+        "services": [
+          {
+            "name": "minio",
+            "tags": ["storage", "s3"],
+            "port": 9000,
+            "check": {
+              "http": "http://{{ ansible_default_ipv4.address }}:9000/minio/health/live",
+              "interval": "10s"
+            }
+          },
+          {
+            "name": "minio-console",
+            "tags": ["storage", "ui"],
+            "port": 9001,
+            "check": {
+              "tcp": "{{ ansible_default_ipv4.address }}:9001",
+              "interval": "10s"
+            }
+          },
+          {
+            "name": "minio-console",
+            "id": "minio-console",
+            "port": 9001,
+            "tags": [
+              "traefik.enable=true",
+              "traefik.http.routers.router-console.entrypoints=http,https",
+              "traefik.http.routers.router-console.rule=Host(`minio.tanerinfo.eu`)",
+              "traefik.http.routers.router-console.service=minio-console",
+              "traefik.http.routers.router-console.middlewares=secure_headers@file,to_https@file",
+              "traefik.http.routers.router-console.tls.certresolver=certs_gen"
+            ],
+            "check": {
+              "tcp": "{{ ansible_default_ipv4.address }}:9001",
+              "interval": "10s"
+            }
+          }
+        ]
+      }
+    dest: /etc/consul.d/minio.json
+    owner: consul
+    group: consul
+    mode: '0644'
+  notify: reload consul
+
+- name: Reload consul
+  systemd:
+    name: consul
+    state: reloaded

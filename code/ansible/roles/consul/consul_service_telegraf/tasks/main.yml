@@ -1,0 +1,46 @@
+---
+- name: Wait for Consul to be ready
+  wait_for:
+    port: 8500
+    delay: 5
+
+- name: Register Telegraf in Consul
+  copy:
+    content: |
+      {
+        "services": [
+          {
+            "name": "telegraf",
+            "tags": ["monitoring", "metrics", "iot", "mqtt-consumer"],
+            "address": "{{ ansible_default_ipv4.address }}",
+            "port": 9273,
+            "meta": {
+              "version": "latest",
+              "prometheus_endpoint": "/metrics"
+            },
+            "checks": [
+              {
+                "name": "Telegraf Process",
+                "args": ["systemctl", "is-active", "telegraf"],
+                "interval": "30s"
+              },
+              {
+                "name": "Telegraf Prometheus Endpoint",
+                "http": "http://{{ ansible_default_ipv4.address }}:9273/metrics",
+                "interval": "30s",
+                "timeout": "5s"
+              }
+            ]
+          }
+        ]
+      }
+    dest: /etc/consul.d/telegraf.json
+    owner: consul
+    group: consul
+    mode: '0644'
+  notify: reload consul
+
+- name: Reload consul
+  systemd:
+    name: consul
+    state: reloaded

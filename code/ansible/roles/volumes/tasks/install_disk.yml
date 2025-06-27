@@ -1,0 +1,52 @@
+
+- name: create ext4 File System
+  ansible.builtin.filesystem:
+    fstype: ext4
+    dev: "{{ item.disk }}"
+
+- name: "create group {{ item.owner }}"
+  ansible.builtin.group:
+    name: "{{ item.owner }}"
+    system: yes
+    state: present
+  when: item.owner is defined
+
+- name: "create user {{ item.owner }}"
+  ansible.builtin.user:
+    name: "{{ item.owner }}"
+    system: yes
+    shell: /sbin/nologin
+    state: present
+  when: item.owner is defined
+
+- name: ensure directory exists
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.owner | default('root') }}"
+    mode: 0755
+
+- name: check if the path already exists in fstab
+  ansible.builtin.lineinfile:
+    name: /etc/fstab
+    line: "{{ item.path }}"
+    state: present
+  check_mode: yes
+  register: __volumes_result_path
+  changed_when: false
+
+- name: Display uuid & store in variable
+  command: blkid -s UUID -o value {{ item.disk }}
+  register: __volumes_uuid_disk
+  changed_when: false
+
+- name: Mount File System
+  mount:
+    path: "{{ item.path }}"
+    src: "UUID={{ __volumes_uuid_disk.stdout }}"
+    fstype: ext4
+    opts: rw,nofail,noatime,auto
+    state: mounted
+  #when: __volumes_result_path.changed
+

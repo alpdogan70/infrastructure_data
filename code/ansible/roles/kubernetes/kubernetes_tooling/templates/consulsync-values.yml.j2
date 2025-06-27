@@ -1,0 +1,19 @@
+global:
+  enabled: false
+  datacenter: staner
+syncCatalog:
+  addK8SNamespaceSuffix: false
+  default: true
+  enabled: true
+  syncClusterIPServices: true
+  toConsul: true
+  toK8S: false
+  k8sAllowNamespaces: ['default','monitoring']
+  securityContext:
+    runAsNonRoot: false
+client:
+  enabled: true
+  join:
+{% for srv in groups['meta-app_consul'] %}
+    - {{ hostvars[srv]['ansible_host'] }}
+{% endfor %}

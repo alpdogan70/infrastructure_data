@@ -1,0 +1,13 @@
+{{ ansible_managed | comment }}
+# rotate frequency
+{{ logrotate_frequency }}
+su {{ logrotate_user }} {{ logrotate_group }}
+# keep
+rotate {{ logrotate_number }}
+# create new (empty) log files after rotating old ones
+create
+# add dateext
+dateext
+compress
+# packages drop log rotation information into this directory
+include /etc/logrotate.d

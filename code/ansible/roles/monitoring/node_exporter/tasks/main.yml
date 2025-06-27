@@ -1,0 +1,70 @@
+---
+# tasks file for roles/node_exporter
+
+- name: check if node exporter exist
+  stat:
+    path: "{{ node_exporter_bin }}"
+  register: __check_node_exporter_present
+
+- name: if node exporter exist get version
+  shell: "cat /etc/systemd/system/node_exporter.service | grep Version | sed s/'.*Version '//g"
+  register: __get_node_exporter_version
+  when: __check_node_exporter_present.stat.exists == true
+  changed_when: false
+
+- name: create node exporter user
+  user:
+    name: "{{ node_exporter_user }}"
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: false
+
+- name: create node exporter config dir
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ node_exporter_user }}"
+    group: "{{ node_exporter_group }}"
+  loop:
+    - "{{ node_exporter_dir_conf }}"
+    - "{{ node_exporter_dir_data }}"
+
+- name: download and unzip node exporter if not exist
+  unarchive:
+    src: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+    dest: /tmp/
+    remote_src: yes
+    validate_certs: true
+  when: __check_node_exporter_present.stat.exists == false or not __get_node_exporter_version.stdout == node_exporter_version
+
+- name: move the binary to the final destination
+  copy:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+    dest: "{{ node_exporter_bin }}"
+    owner: "{{ node_exporter_user }}"
+    group: "{{ node_exporter_group }}"
+    mode: 0750
+    remote_src: yes
+  when: __check_node_exporter_present.stat.exists == false or not __get_node_exporter_version.stdout == node_exporter_version
+
+- name: clean
+  file:
+    path: /tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/
+    state: absent
+
+- name: install service
+  template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+    owner: root
+    group: root
+    mode: 0750
+  notify: reload_daemon_and_restart_node_exporter
+
+- meta: flush_handlers
+
+- name: service always started
+  systemd:
+    name: node_exporter
+    state: started
+    enabled: yes

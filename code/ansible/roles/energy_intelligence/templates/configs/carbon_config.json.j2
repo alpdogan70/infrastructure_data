@@ -1,0 +1,57 @@
+{
+  "emission_factors_g_co2_kwh": {
+    "grid_electricity_france": 79,
+    "solar_pv_lifecycle": 41,
+    "battery_storage": 15,
+    "natural_gas": 490,
+    "coal": 820,
+    "nuclear": 12,
+    "wind": 11,
+    "hydro": 24
+  },
+  "avoidance_factors_g_co2_kwh": {
+    "solar_autoconsumption": 79,
+    "battery_optimization": 25,
+    "efficiency_improvement": 15,
+    "load_shifting": 10,
+    "demand_response": 20
+  },
+  "carbon_targets": {
+    "daily_target_kg_co2": 50.0,
+    "monthly_target_kg_co2": 1500.0,
+    "annual_target_kg_co2": 18000.0,
+    "reduction_target_percent_annual": 15,
+    "carbon_neutrality_target_year": 2030
+  },
+  "scopes": {
+    "scope_1": {
+      "description": "Émissions directes",
+      "sources": ["backup_generator", "company_vehicles"]
+    },
+    "scope_2": {
+      "description": "Émissions indirectes énergétiques", 
+      "sources": ["grid_electricity", "heating", "cooling"]
+    },
+    "scope_3": {
+      "description": "Autres émissions indirectes",
+      "sources": ["equipment_manufacturing", "transport", "waste"]
+    }
+  },
+  "reporting": {
+    "frequency": "daily",
+    "include_lifecycle_emissions": true,
+    "include_avoided_emissions": true,
+    "benchmark_against": "french_datacenter_average",
+    "export_format": "json"
+  },
+  "alerts": {
+    "daily_threshold_exceeded_percent": 20,
+    "monthly_trend_warning_percent": 10,
+    "urgent_action_threshold_kg_co2": 5.0
+  },
+  "certification": {
+    "target_certification": "iso_14001",
+    "carbon_offset_provider": "verified_carbon_standard",
+    "offset_percentage": 20
+  }
+}

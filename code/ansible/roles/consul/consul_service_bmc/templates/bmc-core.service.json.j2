@@ -1,0 +1,23 @@
+# File: consul_service_bmc/templates/bmc-core.service.json.j2
+{
+  "service": {
+    "name": "bmc-core",
+    "tags": [
+      "bmc",
+      "core-service",
+      "sensor-monitoring", 
+      "power-management"
+    ],
+    "address": "{{ ansible_default_ipv4.address }}",
+    "port": 1883,
+    "meta": {
+      "component": "aspeed-ast2600-simulator",
+      "mqtt_topics": "bmc/server/+/sensors,bmc/server/+/power,bmc/system/status",
+      "environment": "{{ metadatas.environment }}"
+    },
+    "check": {
+      "script": "systemctl is-active bmc-core-simulator",
+      "interval": "30s"
+    }
+  }
+}

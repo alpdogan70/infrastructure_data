@@ -1,0 +1,73 @@
+---
+# tasks file for roles/vmagent
+
+- name: check if vmagent exists
+  stat:
+    path: /usr/local/bin/vmagent-prod
+  register: __vmagent_exists
+
+- name: check if vmalert exists
+  stat:
+    path: /usr/local/bin/vmalert-prod
+  register: __vmalert_exists
+
+- name: if vmagent exists get version
+  shell: "cat /etc/systemd/system/vmagent.service | grep Version | sed s/'.*Version '//g"
+  register: __get_vmagent_version
+  when: __vmagent_exists.stat.exists == true
+  changed_when: false
+
+- name: create directory for vmtools 
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: 0750
+    recurse: yes
+  loop:
+    - "{{ vmagent_dir_config }}"
+    - "{{ vmagent_dir_data }}"
+    - "{{ vmalert_dir_config }}"
+
+- name: push alerts configuration
+  copy:
+    src: "{{ item }}"
+    dest: "/etc/vmalert/{{ item | basename }}"
+    mode: 0750
+  with_fileglob:
+  - alerts/*.yml
+  notify: restart_vmalert
+
+- name: download vmstack
+  unarchive:
+    src: https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v{{ vmagent_version }}/vmutils-linux-amd64-v{{ vmagent_version }}.tar.gz
+    dest: /usr/local/bin
+    remote_src: yes
+  when: __vmagent_exists.stat.exists == False or not __get_vmagent_version.stdout == vmagent_version or __vmalert_exists.stat.exists == False
+
+- name: "{{ item }} - configuration file"
+  template:
+    src: "{{ item }}.service.j2"
+    dest: "/etc/systemd/system/{{ item }}.service"         
+    mode: 0750
+  notify: "restart_{{ item }}"
+  loop:
+  - vmagent
+  - vmalert
+
+- name: vmagent configuration file
+  template:
+    src: vmagent.yml.j2
+    dest: "{{ vmagent_dir_config }}/vmagent.yml"           
+    mode: 0750
+  notify: restart_vmagent
+
+- meta: flush_handlers
+
+- name: start vmtools
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  loop:
+    - vmagent
+    - vmalert

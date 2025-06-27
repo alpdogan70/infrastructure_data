@@ -1,0 +1,65 @@
+[log]
+  level = "INFO"
+  filePath = "{{ traefik_dir_log}}/traefik.log"
+  format = "json"
+
+[accessLog]
+  filePath =  "{{ traefik_dir_log}}/access-traefik.log"
+  format = "json" 
+
+[file]
+watch = true
+
+[api]
+  dashboard = true
+  insecure = false
+
+[entryPoints]
+  [entryPoints.http]
+    address = ":80"
+    [entryPoints.http.http.redirections]
+      [entryPoints.http.http.redirections.entryPoint]
+        to = "https"
+        scheme = "https"
+    [entryPoints.http.http2]
+      maxConcurrentStreams = 250
+  [entryPoints.https]
+    address = ":443"
+    [entryPoints.https.http2]
+      maxConcurrentStreams = 250
+  [entryPoints.api]
+    address = ":8080"
+  [entryPoints.metrics]
+    address = ":9200"
+  [entryPoints.ssh]
+    address = ":2222"
+
+[certificatesResolvers]
+  [certificatesResolvers.{{ traefik_tls_resolver }}]
+    [certificatesResolvers.{{ traefik_tls_resolver }}.acme]
+      email = "{{ traefik_tls_mail }}"
+      caServer = "https://acme-staging-v02.api.letsencrypt.org/directory"
+      storage = "acme.json"
+      keyType = "EC384"
+        [certificatesResolvers.{{ traefik_tls_resolver }}.acme.httpChallenge]
+          entryPoint = "http"
+
+[providers.file]
+  directory = "{{ traefik_dir_conf }}"             
+  watch = true
+
+[providers.consulCatalog]
+  cache = false
+  watch = true
+  exposedByDefault=false
+  [providers.consulCatalog.endpoint]
+    datacenter = "staner"
+    address = "{{ traefik_consul_catalog }}"
+
+[metrics]
+  [metrics.prometheus]
+    entryPoint = "metrics"
+    buckets = [0.1,0.3,1.2,5.0]
+    addEntryPointsLabels = true
+    addRoutersLabels = true
+    addServicesLabels = true

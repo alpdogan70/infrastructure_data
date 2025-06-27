@@ -1,0 +1,6 @@
+- name: Clean route on the router
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Add k8s routes to our router
+      command: openstack router set rt1 --no-route

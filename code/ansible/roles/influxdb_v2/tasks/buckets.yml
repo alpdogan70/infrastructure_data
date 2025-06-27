@@ -1,0 +1,213 @@
+---
+# Simplified buckets configuration - Essential buckets only
+# File: /ansible/roles/influxdb_v2/tasks/buckets.yml
+
+- name: Wait for InfluxDB to be fully ready
+  wait_for:
+    port: 8086
+    delay: 10
+    timeout: 60
+
+- name: Read token from file
+  slurp:
+    src: /etc/influxdb2/admin-token
+  register: token_content
+  failed_when: false
+
+- name: Set token variable
+  set_fact:
+    current_token: "{{ token_content.content | b64decode | trim }}"
+  when: 
+    - token_content is defined
+    - not token_content.failed
+    - token_content.content is defined
+
+- name: Use fallback token if needed
+  set_fact:
+    current_token: "{{ influxdb_generated_token | default(setup_result.json.auth.token) }}"
+  when: current_token is not defined
+
+- name: Debug token info
+  debug:
+    msg: |
+      Token available: {{ current_token is defined }}
+      Token length: {{ current_token | length if current_token is defined else 0 }}
+      Token preview: {{ current_token[:20] if current_token is defined else 'N/A' }}...
+
+- name: Remove old/duplicate buckets first
+  shell: |
+    set -e
+    TOKEN="{{ current_token }}"
+    ORG="{{ influxdb_org }}"
+    
+    # Function to safely delete bucket if it exists
+    delete_bucket_if_exists() {
+        local name=$1
+        local reason=$2
+        
+        echo "Checking bucket: $name"
+        if influx bucket list --org "$ORG" --token "$TOKEN" --name "$name" 2>/dev/null | grep -q "$name"; then
+            echo "  → Deleting '$name' ($reason)"
+            
+            # Get bucket ID and delete
+            bucket_id=$(influx bucket list --org "$ORG" --token "$TOKEN" --name "$name" --json 2>/dev/null | jq -r '.[0].id' 2>/dev/null || echo "")
+            
+            if [ -n "$bucket_id" ] && [ "$bucket_id" != "null" ]; then
+                influx bucket delete --id "$bucket_id" --token "$TOKEN" --org "$ORG" 2>/dev/null || echo "    (failed to delete - may be in use)"
+                echo "  ✅ Deleted '$name'"
+            else
+                echo "    (skipped - couldn't get ID)"
+            fi
+        else
+            echo "  ✓ Bucket '$name' doesn't exist"
+        fi
+    }
+    
+    echo "🗑️ Cleaning up duplicate/unnecessary buckets..."
+    
+    # Remove duplicates (keep the better named ones)
+    delete_bucket_if_exists "solar_panels" "duplicate of solar_production"
+    delete_bucket_if_exists "batteries" "duplicate of battery_system"
+    delete_bucket_if_exists "weather_data" "duplicate of environmental_data"
+    delete_bucket_if_exists "energy_analytics" "merged into energy_management"
+    delete_bucket_if_exists "dashboard_metrics" "merged into dashboard_realtime"
+    delete_bucket_if_exists "consumption_analytics" "merged into energy_consumption"
+    delete_bucket_if_exists "datacenter_archive" "unnecessary for mini datacenter"
+    
+    echo "✅ Cleanup completed"
+    
+  register: cleanup_result
+  environment:
+    INFLUX_HOST: "http://localhost:8086"
+  when: current_token is defined and current_token != ""
+  ignore_errors: true
+
+- name: Create essential buckets only
+  shell: |
+    set -e
+    TOKEN="{{ current_token }}"
+    ORG="{{ influxdb_org }}"
+    
+    # Function to create bucket
+    create_bucket() {
+        local name=$1
+        local retention=$2
+        local description=$3
+        
+        echo "Creating bucket: $name"
+        
+        # Check if bucket exists
+        if influx bucket list --org "$ORG" --token "$TOKEN" --name "$name" 2>/dev/null | grep -q "$name"; then
+            echo "  ✓ Bucket '$name' already exists"
+        else
+            echo "  → Creating bucket '$name' with retention $retention"
+            influx bucket create \
+                --org "$ORG" \
+                --name "$name" \
+                --retention "$retention" \
+                --description "$description" \
+                --token "$TOKEN"
+            echo "  ✅ Created bucket '$name'"
+        fi
+    }
+    
+    echo "📊 Creating essential buckets for datacenter..."
+    
+    # CORE SYSTEM BUCKETS (keep existing)
+    create_bucket "telegraf" "604800s" "System metrics from Telegraf (7 days)"
+    create_bucket "{{ influxdb_bucket }}" "{{ influxdb_retention }}" "IoT sensor data (original)"
+    
+    # ESSENTIAL DATACENTER BUCKETS (simplified)
+    create_bucket "dashboard_realtime" "604800s" "Dashboard real-time metrics (7 days)"
+    create_bucket "solar_production" "2592000s" "Solar panel production data (30 days)"
+    create_bucket "battery_system" "2592000s" "Battery status and performance (30 days)"
+    create_bucket "energy_consumption" "2592000s" "Energy consumption data (30 days)"
+    create_bucket "grid_data" "2592000s" "Electrical grid data (30 days)"
+    create_bucket "environmental_data" "1209600s" "Weather and environmental data (14 days)"
+    create_bucket "energy_management" "7776000s" "Energy management and analytics (90 days)"
+    
+    # BMC ASPEED AST2600 BUCKETS (nouveau)
+    create_bucket "bmc_servers" "2592000s" "BMC server monitoring and sensors (30 days)"
+    create_bucket "bmc_power_management" "7776000s" "BMC power control events and energy automation (90 days)"
+    create_bucket "bmc_system" "1209600s" "BMC system health and IPMI status (14 days)"
+    
+    # 🆕 ENERGY AI INTELLIGENCE BUCKETS (NOUVEAU - ajouter cette section)
+    create_bucket "energy_ai" "7776000s" "Energy AI predictions and optimization results (90 days)"
+    create_bucket "energy_scenarios" "2592000s" "Dynamic energy scenarios execution logs (30 days)"
+    create_bucket "ai_predictions" "604800s" "Real-time AI predictions cache (7 days)"
+    create_bucket "model_performance" "31536000s" "ML model performance metrics and accuracy (365 days)"
+    create_bucket "carbon_metrics" "31536000s" "Carbon footprint and sustainability metrics (365 days)"
+    create_bucket "weather_ml" "1209600s" "Weather ML model data and forecasts (14 days)"
+    create_bucket "cost_optimization" "7776000s" "Energy cost optimization and arbitrage (90 days)"
+
+    echo ""
+    echo "=== Essential buckets in organization '$ORG' ==="
+    influx bucket list --org "$ORG" --token "$TOKEN"
+    
+  register: bucket_result
+  environment:
+    INFLUX_HOST: "http://localhost:8086"
+  when: current_token is defined and current_token != ""
+
+- name: Display bucket creation output
+  debug:
+    msg: |
+      {{ bucket_result.stdout_lines | join('\n') }}
+  when: bucket_result is defined and bucket_result.stdout_lines is defined
+
+- name: Verify final buckets via HTTP API
+  uri:
+    url: "http://localhost:8086/api/v2/buckets?org={{ influxdb_org }}"
+    method: GET
+    headers:
+      Authorization: "Token {{ current_token }}"
+  register: api_buckets
+  when: current_token is defined
+
+- name: List final essential buckets
+  debug:
+    msg: |
+      🎯 Buckets InfluxDB essentiels ({{ api_buckets.json.buckets | length }} total):
+      
+      🖥️ SYSTÈME:
+      {% for bucket in api_buckets.json.buckets | sort(attribute='name') %}
+      {% if bucket.name in ['telegraf', influxdb_bucket] %}
+      {% set retention = bucket.retentionRules[0].everySeconds if bucket.retentionRules and bucket.retentionRules|length > 0 else 'infinite' %}
+      - {{ bucket.name }}: {{ (retention|int / 86400) | round(1) if retention != 'infinite' else 'infinite' }} jours
+      {% endif %}
+      {% endfor %}
+      
+      📊 DASHBOARD:
+      {% for bucket in api_buckets.json.buckets | sort(attribute='name') %}
+      {% if bucket.name in ['dashboard_realtime'] %}
+      {% set retention = bucket.retentionRules[0].everySeconds if bucket.retentionRules and bucket.retentionRules|length > 0 else 'infinite' %}
+      - {{ bucket.name }}: {{ (retention|int / 86400) | round(1) if retention != 'infinite' else 'infinite' }} jours
+      {% endif %}
+      {% endfor %}
+      
+      🌞 ÉNERGIE:
+      {% for bucket in api_buckets.json.buckets | sort(attribute='name') %}
+      {% if bucket.name in ['solar_production', 'battery_system', 'energy_consumption', 'grid_data'] %}
+      {% set retention = bucket.retentionRules[0].everySeconds if bucket.retentionRules and bucket.retentionRules|length > 0 else 'infinite' %}
+      - {{ bucket.name }}: {{ (retention|int / 86400) | round(1) if retention != 'infinite' else 'infinite' }} jours
+      {% endif %}
+      {% endfor %}
+      
+      🌍 ENVIRONNEMENT & GESTION:
+      {% for bucket in api_buckets.json.buckets | sort(attribute='name') %}
+      {% if bucket.name in ['environmental_data', 'energy_management'] %}
+      {% set retention = bucket.retentionRules[0].everySeconds if bucket.retentionRules and bucket.retentionRules|length > 0 else 'infinite' %}
+      - {{ bucket.name }}: {{ (retention|int / 86400) | round(1) if retention != 'infinite' }} jours
+      {% endif %}
+      {% endfor %}
+  when: 
+    - api_buckets is defined
+    - api_buckets.json is defined
+    - api_buckets.json.buckets is defined
+
+- name: Fail if no token
+  fail:
+    msg: |
+      ❌ Impossible de créer les buckets - aucun token disponible
+      Vérifiez l'installation d'InfluxDB et la génération du token
+  when: current_token is not defined or current_token == ""

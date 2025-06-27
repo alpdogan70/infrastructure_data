@@ -1,0 +1,73 @@
+#jinja2: lstrip_blocks: "True"
+{{ vmagent_var_config | to_nice_yaml(indent=2) }}
+
+scrape_configs:
+
+- job_name: node_exporter
+  consul_sd_configs:
+  - server: 'consul.service.staner.consul:8500'
+    services:
+    - 'node_exporter'
+  relabel_configs:
+  - source_labels: ['__meta_consul_address']
+    regex:         '(.*)'
+    target_label:  '__address__'
+    replacement:   '${1}:9100'
+  - source_labels: [__meta_consul_node]
+    target_label: instance
+
+- job_name: traefik
+  consul_sd_configs:
+  - server: 'consul.service.staner.consul:8500'
+    services:
+    - 'traefik_metrics'
+  relabel_configs:
+  - source_labels: ['__meta_consul_address']
+    regex:         '(.*)'
+    target_label:  '__address__'
+    replacement:   '${1}:9200'
+  - source_labels: [__meta_consul_node]
+    target_label: instance
+
+- job_name: consul
+  consul_sd_configs:
+  - server: 'consul.service.staner.consul:8500'
+    services:
+    - 'consul'
+  metrics_path: '/v1/agent/metrics'
+  scheme: http
+  param:
+    format: ["prometheus"]
+  relabel_configs:
+  - source_labels: ['__meta_consul_address']
+    regex:         '(.*)'
+    target_label:  '__address__'
+    replacement:   '${1}:8500'
+  - source_labels: [__meta_consul_node]
+    target_label: instance
+
+- job_name: consul_exporter
+  consul_sd_configs:
+  - server: 'consul.service.staner.consul:8500'
+    services:
+    - 'consul_exporter'
+  relabel_configs:
+  - source_labels: ['__meta_consul_address']
+    regex:         '(.*)'
+    target_label:  '__address__'
+    replacement:   '${1}:9107'
+  - source_labels: [__meta_consul_node]
+    target_label: instance
+
+- job_name: postgresql_exporter
+  consul_sd_configs:
+  - server: 'consul.service.staner.consul:8500'
+    services:
+    - 'postgresql'
+  relabel_configs:
+  - source_labels: ['__meta_consul_address']
+    regex:         '(.*)'
+    target_label:  '__address__'
+    replacement:   '${1}:9187'
+  - source_labels: [__meta_consul_node]
+    target_label: instance

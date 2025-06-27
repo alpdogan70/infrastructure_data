@@ -1,0 +1,31 @@
+
+- name: "Install {{ item.label }} dashboard"
+  get_url:
+    url: "{{ item.json }}"
+    dest: "/var/lib/grafana/{{ item.label }}.json"
+    mode: '0755'
+  notify: restart_grafana
+  when: item.mode == "web"
+  
+- name: "Install {{ item.label }} dashboard"
+  copy:
+    src: "dashboard_{{ item.json }}"
+    dest: "/var/lib/grafana/{{ item.label }}.json"
+    mode: '0755'
+  notify: restart_grafana
+  when: item.mode == "local"
+
+- name: change datasource
+  replace: 
+    path: "/var/lib/grafana/{{ item.label }}.json"
+    regexp: '^(.*)\$\{DS_PROMETHEUS\}(.*)$'
+    replace: '\1VictoriaMetrics\2'
+    backup: yes
+
+- name: "Activate dashboard for {{ item.label }}"
+  template:
+    src: dashboard-register.yml.j2
+    dest: /etc/grafana/provisioning/dashboards/{{ item.label }}.yml
+    mode: 0755
+  notify: restart_grafana
+

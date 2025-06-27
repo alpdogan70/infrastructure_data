@@ -1,0 +1,194 @@
+---
+# BMC Simulator Configuration Playbook - Version propre
+# File: ansible/infrastructure_bmc.yml
+
+- name: Configure BMC Aspeed AST2600 Simulator
+  hosts: meta-app_bmc-simulator
+  become: true
+  vars:
+    # Résolution IP MQTT avec fallback
+    mqtt_broker_host: "{{ hostvars[groups['meta-app_mqtt'][0]]['ansible_default_ipv4']['address'] | default(groups['meta-app_mqtt'][0]) }}"
+    bmc_web_port: 80
+    bmc_ipmi_port: 623
+    
+  pre_tasks:
+    - name: Gather facts from MQTT broker
+      setup:
+      delegate_to: "{{ groups['meta-app_mqtt'][0] }}"
+      delegate_facts: true
+      
+    - name: Set MQTT broker IP
+      set_fact:
+        mqtt_broker_host: "{{ hostvars[groups['meta-app_mqtt'][0]]['ansible_default_ipv4']['address'] }}"
+      when: hostvars[groups['meta-app_mqtt'][0]]['ansible_default_ipv4'] is defined
+      
+    - name: Debug MQTT broker host
+      debug:
+        msg: "Using MQTT broker: {{ mqtt_broker_host }}"
+    
+  roles:
+    - consul/consul
+    - bmc_simulator
+    - monitoring/custom_metrics
+
+# C'est tout ! Le rôle bmc_simulator fait TOUT le travail
+
+
+# ---
+# # BMC Simulator Configuration Playbook
+# # File: ansible/infrastructure_bmc.yml
+
+# - name: Configure BMC Aspeed AST2600 Simulator
+#   hosts: meta-app_bmc-simulator
+#   become: true
+#   vars:
+#     # Résolution IP MQTT avec fallback
+#     mqtt_broker_host: "{{ hostvars[groups['meta-app_mqtt'][0]]['ansible_default_ipv4']['address'] | default(groups['meta-app_mqtt'][0]) }}"
+#     bmc_web_port: 80
+#     bmc_ipmi_port: 623
+    
+#   pre_tasks:
+#     - name: Gather facts from MQTT broker
+#       setup:
+#       delegate_to: "{{ groups['meta-app_mqtt'][0] }}"
+#       delegate_facts: true
+      
+#     - name: Set MQTT broker IP
+#       set_fact:
+#         mqtt_broker_host: "{{ hostvars[groups['meta-app_mqtt'][0]]['ansible_default_ipv4']['address'] }}"
+#       when: hostvars[groups['meta-app_mqtt'][0]]['ansible_default_ipv4'] is defined
+      
+#     - name: Debug MQTT broker host
+#       debug:
+#         msg: "Using MQTT broker: {{ mqtt_broker_host }}"
+    
+#   roles:
+#     - consul/consul
+#     - bmc_simulator
+#     - consul/consul_service_bmc
+#     - monitoring/custom_metrics
+
+# - name: Configure BMC Integration with Energy Management
+#   hosts: meta-app_bmc-simulator
+#   become: true
+#   vars:
+#     mqtt_broker_host: "{{ hostvars[groups['meta-app_mqtt'][0]]['ansible_default_ipv4']['address'] }}"
+#     influxdb_host: "{{ hostvars[groups['meta-app_influxdb'][0]]['ansible_default_ipv4']['address'] }}"
+    
+#   tasks:
+#     - name: Create BMC energy integration script
+#       template:
+#         src: roles/bmc_simulator/templates/bmc_energy_integration.py.j2
+#         dest: /opt/bmc-simulator/bmc_energy_integration.py
+#         owner: root
+#         group: root
+#         mode: '0755'
+      
+#     - name: Create BMC energy integration service
+#       template:
+#         src: roles/bmc_simulator/templates/bmc-energy-integration.service.j2
+#         dest: /etc/systemd/system/bmc-energy-integration.service
+#         owner: root
+#         group: root
+#         mode: '0644'
+#       notify: restart bmc-energy-integration
+      
+#     - name: Enable and start BMC energy integration
+#       systemd:
+#         name: bmc-energy-integration
+#         enabled: yes
+#         state: started
+#         daemon_reload: yes
+        
+#     - name: Create BMC IPMI simulator script
+#       template:
+#         src: roles/bmc_simulator/templates/bmc_ipmi_simulator.py.j2
+#         dest: /opt/bmc-simulator/bmc_ipmi_simulator.py
+#         owner: root
+#         group: root
+#         mode: '0755'
+        
+#     - name: Create BMC IPMI service
+#       template:
+#         src: roles/bmc_simulator/templates/bmc-ipmi-simulator.service.j2
+#         dest: /etc/systemd/system/bmc-ipmi-simulator.service
+#         owner: root
+#         group: root
+#         mode: '0644'
+#       notify: restart bmc-ipmi-simulator
+      
+#     - name: Enable and start BMC IPMI simulator
+#       systemd:
+#         name: bmc-ipmi-simulator
+#         enabled: yes
+#         state: started
+#         daemon_reload: yes
+
+#   handlers:
+#     - name: restart bmc-energy-integration
+#       systemd:
+#         name: bmc-energy-integration
+#         state: restarted
+        
+#     - name: restart bmc-ipmi-simulator
+#       systemd:
+#         name: bmc-ipmi-simulator
+#         state: restarted
+
+# - name: Display BMC Configuration Summary
+#   hosts: meta-app_bmc-simulator
+#   become: false
+#   tasks:
+#     - name: Show BMC access information
+#       debug:
+#         msg: |
+          
+#           🖥️ ===== BMC ASPEED AST2600 SIMULATOR DEPLOYED =====
+          
+#           📡 BMC Web Interface:
+#              • URL: http://{{ ansible_default_ipv4.address }}/
+#              • Username: admin / Password: admin
+#              • Real-time server monitoring and control
+             
+#           🔧 IPMI Access:
+#              • Host: {{ ansible_default_ipv4.address }}
+#              • Port: 623 (IPMI over LAN)
+#              • Commands: ipmitool -H {{ ansible_default_ipv4.address }} -U admin -P admin
+             
+#           ⚡ Energy Integration:
+#              • Auto-shutdown when battery < 20%
+#              • Graceful shutdown when battery < 35%
+#              • Auto-start when solar production > 3kW + battery > 70%
+#              • Topics: bmc/datacenter/energy/control
+             
+#           🖥️ Server Management:
+#              • 12 simulated servers (server_01 to server_12)
+#              • Power on/off/reset control
+#              • Temperature, voltage, fan monitoring
+#              • Boot state simulation
+             
+#           📊 Monitoring Data:
+#              • MQTT Topics: bmc/server/+/sensors, bmc/server/+/power
+#              • Integration with InfluxDB and Grafana
+#              • Real-time dashboards
+             
+#           🔧 Testing Commands:
+#              # Web Interface
+#              curl http://{{ ansible_default_ipv4.address }}/api/servers
+             
+#              # IPMI Commands
+#              ipmitool -H {{ ansible_default_ipv4.address }} -U admin -P admin power status
+#              ipmitool -H {{ ansible_default_ipv4.address }} -U admin -P admin power on
+#              ipmitool -H {{ ansible_default_ipv4.address }} -U admin -P admin power off
+             
+#              # Check BMC services
+#              sudo systemctl status bmc-core-simulator
+#              sudo systemctl status bmc-web-simulator
+             
+#           🚀 Next Steps:
+#              1. Access web interface to test server control
+#              2. Monitor energy integration in Grafana
+#              3. Test IPMI commands for remote management
+#              4. Configure custom power management rules
+          
+#           ✅ BMC Simulator ready for datacenter energy management!

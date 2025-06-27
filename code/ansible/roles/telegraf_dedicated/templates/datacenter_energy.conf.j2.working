@@ -1,0 +1,104 @@
+# Datacenter Solar Production
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = ["energy/solar/datacenter/production"]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-datacenter-solar"
+  
+  data_format = "json"
+  tag_keys = ["panels_active", "weather_factor"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_solar"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "solar"
+
+# Datacenter Battery System
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = ["energy/battery/datacenter/status"]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-datacenter-battery"
+  
+  data_format = "json"
+  tag_keys = ["health"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_battery"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "battery"
+
+# Datacenter Power Consumption
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = ["energy/consumption/datacenter/power"]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-datacenter-load"
+  
+  data_format = "json"
+  tag_keys = ["active_servers", "pue"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_consumption"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "load"
+
+# Grid Connection
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = ["energy/grid/datacenter/status"]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-datacenter-grid"
+  
+  data_format = "json"
+  tag_keys = ["tariff_type", "grid_quality"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_grid"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "grid"
+
+# Energy Optimization Decisions
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://{{ telegraf_mqtt_broker }}:1883"]
+  topics = ["energy/optimization/datacenter/decision"]
+  topic_tag = "topic"
+  qos = 1
+  connection_timeout = "30s"
+  username = "telegraf"
+  password = "telegraf123"
+  client_id = "telegraf-datacenter-optimizer"
+  
+  data_format = "json"
+  tag_keys = ["mode"]
+  json_time_key = "timestamp"
+  json_time_format = "2006-01-02T15:04:05Z07:00"
+  name_override = "datacenter_optimization"
+  
+  [inputs.mqtt_consumer.tags]
+    source = "datacenter"
+    component = "optimizer"

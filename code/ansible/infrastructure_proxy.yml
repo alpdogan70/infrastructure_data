@@ -1,0 +1,32 @@
+- name: install our proxy
+  become: yes
+  hosts: meta-app_proxy
+  roles:
+    - traefik
+    - consul/consul_services
+    - logging/logrotate
+    - logging/vector
+  vars:
+    vector_list: ["traefik"]
+    traefik_consul_catalog: "consul.service.staner.consul:8500"
+    logrotate_log_files:
+      - name: traefik
+        path: "/var/log/traefik/*.log"
+        postrotate: "kill -USR1 `pgrep traefik`"
+    consul_services:
+      - {
+        name: "traefik_dashboard",
+        type: "tcp",
+        check_target: "127.0.0.1:8080",
+        interval: "10s",
+        port: 8080      
+        }
+      - {
+        name: "traefik_metrics",
+        type: "http",
+        check_target: "http://127.0.0.1:9200/metrics",
+        interval: "10s",
+        port: 9200
+        }
+
+

@@ -1,0 +1,58 @@
+{
+  "tariff_config": {
+    "country": "france",
+    "provider": "edf",
+    "contract_type": "tempo",
+    "power_subscription_kva": 36
+  },
+  "tariffs_eur_kwh": {
+    "peak_hours": {
+      "weekday": 0.1841,
+      "weekend": 0.1658,
+      "time_range": "08:00-22:00"
+    },
+    "off_peak_hours": {
+      "weekday": 0.1470,
+      "weekend": 0.1470,
+      "time_range": "22:00-08:00"
+    },
+    "injection_tariff": 0.10,
+    "grid_connection_fee_monthly": 15.50
+  },
+  "tempo_colors": {
+    "blue_days": {
+      "peak": 0.1558,
+      "off_peak": 0.1272,
+      "annual_limit": 300
+    },
+    "white_days": {
+      "peak": 0.1734,
+      "off_peak": 0.1272,
+      "annual_limit": 43
+    },
+    "red_days": {
+      "peak": 0.7562,
+      "off_peak": 0.1272,
+      "annual_limit": 22
+    }
+  },
+  "optimization_settings": {
+    "battery_arbitrage_enabled": true,
+    "load_shifting_enabled": true,
+    "solar_maximization_enabled": true,
+    "demand_response_enabled": true,
+    "minimum_savings_threshold_eur": 0.50
+  },
+  "cost_calculation": {
+    "include_taxes": true,
+    "tax_rate": 0.20,
+    "include_grid_fees": true,
+    "include_renewable_contribution": true
+  },
+  "energy_limits": {
+    "max_consumption_kw": 200,
+    "max_injection_kw": 150,
+    "battery_capacity_kwh": 100,
+    "solar_capacity_kw": 150
+  }
+}

@@ -1,0 +1,9 @@
+---
+# handlers file for roles/monitoring/consul_exporter
+
+- name: reload_daemon_and_restart_consul_exporter
+  ansible.builtin.service:
+    name: consul_exporter
+    state: restarted
+    enabled: true
+    daemon-reload: yes
