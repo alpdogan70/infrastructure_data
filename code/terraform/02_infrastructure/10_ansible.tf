@@ -29,7 +29,7 @@ resource "null_resource" "ansible_infrastructure" {
       #${var.ANSIBLE_ENV_VARS} ${var.ANSIBLE_COMMAND} ${var.default_user} ${var.ANSIBLE_OPTIONS}  ../../ansible/infrastructure_loki.yml;
 
       #BMC simulator (NOUVEAU)
-      ${var.ANSIBLE_ENV_VARS} ${var.ANSIBLE_COMMAND} ${var.default_user} ${var.ANSIBLE_OPTIONS}  ../../ansible/infrastructure_bmc.yml;
+      #${var.ANSIBLE_ENV_VARS} ${var.ANSIBLE_COMMAND} ${var.default_user} ${var.ANSIBLE_OPTIONS}  ../../ansible/infrastructure_bmc.yml;
       
       #Energy AI Intelligence (🆕 NOUVEAU)
       ${var.ANSIBLE_ENV_VARS} ${var.ANSIBLE_COMMAND} ${var.default_user} ${var.ANSIBLE_OPTIONS}  ../../ansible/infrastructure_energy_ai.yml;
