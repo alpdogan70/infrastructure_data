@@ -37,7 +37,13 @@
 
 - name: "🔍 Liste des buckets IA disponibles"
   set_fact:
-    ai_buckets_available: "{{ existing_buckets.json.buckets | selectattr('name', 'match', '^(energy_ai|ai_predictions|energy_scenarios|model_performance|carbon_metrics|weather_ml|cost_optimization)$') | map(attribute='name') | list }}"
+    ai_buckets_available: []
+
+- name: "🔍 Identification buckets IA"
+  set_fact:
+    ai_buckets_available: "{{ ai_buckets_available + [item.name] }}"
+  loop: "{{ existing_buckets.json.buckets }}"
+  when: item.name in ['energy_ai', 'ai_predictions', 'energy_scenarios', 'model_performance', 'carbon_metrics', 'weather_ml', 'cost_optimization']
 
 - name: "✅ Vérification des buckets IA essentiels"
   assert:
@@ -91,11 +97,24 @@
       Authorization: "Token {{ influxdb_token.content | b64decode | trim }}"
     status_code: 200
   register: updated_buckets
-  when: carbon_bucket_creation is defined
+  when: carbon_bucket_creation is defined and carbon_bucket_creation.status == 201
 
 - name: "🔍 Mise à jour de la liste des buckets IA"
   set_fact:
-    ai_buckets_available: "{{ updated_buckets.json.buckets | selectattr('name', 'match', '^(energy_ai|ai_predictions|energy_scenarios|model_performance|carbon_metrics|weather_ml|cost_optimization)}"
+    ai_buckets_updated: []
+  when: updated_buckets is defined
+
+- name: "🔍 Re-identification buckets IA après création"
+  set_fact:
+    ai_buckets_updated: "{{ ai_buckets_updated + [item.name] }}"
+  loop: "{{ updated_buckets.json.buckets }}"
+  when: 
+    - updated_buckets is defined
+    - item.name in ['energy_ai', 'ai_predictions', 'energy_scenarios', 'model_performance', 'carbon_metrics', 'weather_ml', 'cost_optimization']
+
+- name: "🔄 Finalisation liste buckets IA"
+  set_fact:
+    ai_buckets_available: "{{ ai_buckets_updated | default(ai_buckets_available) }}"
 
 - name: "⚙️ Configuration datasource Grafana pour IA"
   uri:
@@ -196,102 +215,4 @@
       🎯 Datasource Grafana: {{ 'CONFIGURÉ' if grafana_datasource.status in [200, 409] else 'ERREUR' }}
       🏢 Organisation: {{ influxdb_org }} ({{ influxdb_org_id[:8] }}...)
       
-      💡 Note: Les buckets IA sont gérés par le rôle influxdb_v2) | map(attribute='name') | list }}"
-  when: updated_buckets is defined
-
-- name: "⚙️ Configuration datasource Grafana pour IA"
-  uri:
-    url: "http://{{ grafana_host | default('localhost') }}:3000/api/datasources"
-    method: POST
-    headers:
-      Authorization: "Bearer {{ grafana_admin_token | default('admin') }}"
-      Content-Type: "application/json"
-    body_format: json
-    body:
-      name: "InfluxDB_AI"
-      type: "influxdb"
-      url: "http://{{ influxdb_host }}:8086"
-      access: "proxy"
-      database: ""
-      jsonData:
-        version: "Flux"
-        organization: "{{ influxdb_org }}"
-        defaultBucket: "energy_ai"
-        httpMode: "POST"
-      secureJsonData:
-        token: "{{ influxdb_token.content | b64decode | trim }}"
-    status_code: [200, 409]  # 409 si datasource existe déjà
-  register: grafana_datasource
-  ignore_errors: true
-
-- name: "🧪 Test écriture données IA dans InfluxDB"
-  uri:
-    url: "http://{{ influxdb_host }}:8086/api/v2/write?org={{ influxdb_org | urlencode }}&bucket=energy_ai&precision=s"
-    method: POST
-    headers:
-      Authorization: "Token {{ influxdb_token.content | b64decode | trim }}"
-      Content-Type: "text/plain"
-    body: |
-      ai_deployment,source=ansible,component=test ai_status=1,deployment_version="{{ energy_ai.version }}",timestamp={{ ansible_date_time.epoch }}
-    status_code: 204
-  register: influxdb_write_test
-
-- name: "📊 Test lecture données IA"
-  uri:
-    url: "http://{{ influxdb_host }}:8086/api/v2/query?org={{ influxdb_org | urlencode }}"
-    method: POST
-    headers:
-      Authorization: "Token {{ influxdb_token.content | b64decode | trim }}"
-      Content-Type: "application/vnd.flux"
-    body: |
-      from(bucket: "energy_ai")
-        |> range(start: -5m)
-        |> filter(fn: (r) => r._measurement == "ai_deployment")
-        |> last()
-    status_code: 200
-  register: influxdb_read_test
-
-- name: "🔐 Création token InfluxDB spécifique IA (optionnel)"
-  uri:
-    url: "http://{{ influxdb_host }}:8086/api/v2/authorizations"
-    method: POST
-    headers:
-      Authorization: "Token {{ influxdb_token.content | b64decode | trim }}"
-      Content-Type: "application/json"
-    body_format: json
-    body:
-      description: "Energy AI Token - {{ ansible_date_time.date }}"
-      orgID: "{{ influxdb_org_id }}"
-      permissions:
-        - action: "read"
-          resource:
-            type: "buckets"
-            orgID: "{{ influxdb_org_id }}"
-        - action: "write"
-          resource:
-            type: "buckets"
-            orgID: "{{ influxdb_org_id }}"
-    status_code: [201, 422]
-  register: ai_token_creation
-  when: energy_ai.environment == "production"
-  ignore_errors: true
-
-- name: "📋 Résumé configuration InfluxDB IA"
-  debug:
-    msg: |
-      ✅ Configuration InfluxDB IA terminée:
-      
-      🗄️ Buckets IA disponibles ({{ ai_buckets_available | length }}/7):
-      {% for bucket in ai_buckets_available %}
-      📊 {{ bucket }} - ✅ Disponible
-      {% endfor %}
-      
-      🔗 Connectivité:
-      📡 Santé InfluxDB: {{ 'OK' if influxdb_health.status == 200 else 'ERREUR' }}
-      ✍️ Test écriture: {{ 'RÉUSSI' if influxdb_write_test.status == 204 else 'ÉCHOUÉ' }}
-      📖 Test lecture: {{ 'RÉUSSI' if influxdb_read_test.status == 200 else 'ÉCHOUÉ' }}
-      
-      🎯 Datasource Grafana: {{ 'CONFIGURÉ' if grafana_datasource.status in [200, 409] else 'ERREUR' }}
-      🏢 Organisation: {{ influxdb_org }} ({{ influxdb_org_id[:8] }}...)
-      
-      💡 Note: Les buckets IA sont créés par le rôle influxdb_v2
+      💡 Note: Les buckets IA sont gérés par le rôle influxdb_v2

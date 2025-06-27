@@ -14,7 +14,7 @@ resource "null_resource" "ansible_infrastructure" {
       #${var.ANSIBLE_ENV_VARS} ${var.ANSIBLE_COMMAND} ${var.default_user} ${var.ANSIBLE_OPTIONS} ../../ansible/infrastructure_minio.yml;
       
       #iot stack
-      ${var.ANSIBLE_ENV_VARS} ${var.ANSIBLE_COMMAND} ${var.default_user} ${var.ANSIBLE_OPTIONS} ../../ansible/infrastructure_iot_stack.yml;
+      #${var.ANSIBLE_ENV_VARS} ${var.ANSIBLE_COMMAND} ${var.default_user} ${var.ANSIBLE_OPTIONS} ../../ansible/infrastructure_iot_stack.yml;
 
       #consul server/agent
       #${var.ANSIBLE_ENV_VARS} ${var.ANSIBLE_COMMAND} ${var.default_user} ${var.ANSIBLE_OPTIONS}  ../../ansible/infrastructure_consul.yml;
